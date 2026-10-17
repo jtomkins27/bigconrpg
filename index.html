@@ -443,7 +443,189 @@ const SKILLS={
     d:'Full-party heal + “Aligned”. Unlocks after the Fiscal Mandate (P4). The whole plot, structurally.'}
 };
 
-/* ---- ENEMIES (14-ish for P2; P0 stub-battles use entries from here) ---- */
+/* ================= COMBAT DATA (P2) =================
+   ===TWEAK: all numbers live here or in TUNING. The battle engine reads
+   only these tables — rebalancing never touches engine code. === */
+
+/* PARTY base stats at level 1. Level = 1 + milestones stamped. */
+const STATBASE={
+  butler:  {hp:70, mp:26, atk:12, def:14, agi:9},
+  max:     {hp:80, mp:22, atk:14, def:13, agi:8},
+  aidan:   {hp:62, mp:30, atk:16, def:9,  agi:10},
+  lane:    {hp:58, mp:32, atk:15, def:8,  agi:13},
+  simring: {hp:60, mp:30, atk:15, def:8,  agi:11},
+  swain:   {hp:92, mp:22, atk:10, def:18, agi:5},
+  kiran:   {hp:55, mp:26, atk:13, def:8,  agi:14},
+  jason:   {hp:85, mp:16, atk:20, def:10, agi:7},
+  lucian:  {hp:64, mp:28, atk:13, def:9,  agi:12},
+  tan:     {hp:60, mp:22, atk:17, def:8,  agi:16}
+};
+/* per-char kits (unlock per level: level n unlocks kit[n-1] once available) */
+const KITS={
+  butler:['tea_bickies','silver_service','doilies','high_tea','final_polish'],
+  max:['wallet_wall','term_deposit','leveraged_banter','cds_casino','margin_absolve'],
+  aidan:['rate_hike','somp','qe','sticky_infl'],
+  lane:['toktimer','plant_bug','dossier','backtest','edge_case'],
+  simring:['media_spin','front_page','quest_time','leak','shockjock'],
+  swain:['red_tape','long_stare','form47','circular','proc_motion'],
+  kiran:['loaded_dice','caffeine_sprint','allnighter','stat_noise','curve_flat'],
+  jason:['cash_backer','cook_books','accc_ping','coal_buffet','seam41'],
+  lucian:['power_lunch','quiet_word','golf_invite','long_lunch','donors_round'],
+  tan:['scalp','insider_sprint','short_squeeze','pivot_ai','reversal']
+};
+
+/* ENEMY statlines; scale = phase ratchet”(see TUNING.ratchet) */
+const ENEMY_STATS={
+  b4_guard:   {hp:32, mp:0,  atk:9,  def:6,  agi:8},
+  b4_chief:   {hp:80, mp:14, atk:12, def:9,  agi:9},
+  hedge_algo: {hp:40, mp:8,  atk:11, def:6,  agi:14},
+  spin_unit:  {hp:36, mp:10, atk:10, def:7,  agi:11},
+  asic_drone: {hp:38, mp:8,  atk:10, def:9,  agi:10},
+  asic_chief: {hp:110,mp:20, atk:14, def:14, agi:10},
+  quant_wombat:{hp:44,mp:12, atk:11, def:10, agi:9},
+  income_pol: {hp:42, mp:6,  atk:12, def:9,  agi:9},
+  ibis:       {hp:33, mp:0,  atk:11, def:5,  agi:15},
+  ibis_king:  {hp:120,mp:16, atk:15, def:11, agi:14},
+  kangaroo:   {hp:70, mp:0,  atk:16, def:8,  agi:16},
+  shadow_ops: {hp:46, mp:10, atk:12, def:9,  agi:12},
+  scaffold:   {hp:60, mp:0,  atk:0,  def:16, agi:4},
+  spokes_tr:  {hp:190,mp:30, atk:17, def:14, agi:11},
+  kraken:     {hp:230,mp:24, atk:19, def:12, agi:9},
+  rival_sim:  {hp:150,mp:26, atk:14, def:10, agi:12},
+  rival_max:  {hp:170,mp:22, atk:15, def:13, agi:9},
+  rival_tan:  {hp:140,mp:24, atk:16, def:9,  agi:17},
+  rival_lucian:{hp:150,mp:26,atk:13, def:10, agi:13},
+  bullock_p1: {hp:260,mp:40, atk:18, def:15, agi:12},
+  bullock_p2: {hp:310,mp:46, atk:21, def:16, agi:13}
+};
+
+/* scripted enemy AI: moves rotate on turn count; 'heal' allies, 'summon' adds
+   minionId when hp < frac, |TWEAK freely === */
+const ENEMY_AI={
+  b4_chief:  {moves:[{skill:'heavy'}, {skill:'bellow', every:2}], summon:{id:'b4_guard', frac:0.45}},
+  hedge_algo:{moves:[{skill:'heavy'}]},
+  spin_unit: {moves:[{skill:'spin', every:2},{skill:'heavy'}]},
+  asic_drone:{moves:[{skill:'audit', every:2},{skill:'heavy'}]},
+  asic_chief:{moves:[{skill:'audit'}, {skill:'heavy', every:2}], summon:{id:'asic_drone', frac:0.5}},
+  ibis_king: {moves:[{skill:'heavy'},{skill:'bellow', every:2}]},
+  spokes_tr: {moves:[{skill:'heavy'},{skill:'audit', every:2},{skill:'bellow', every:3}]},
+  kraken:    {moves:[{skill:'lug'},{skill:'heavy', every:2}]},
+  rival_sim: {moves:[{skill:'heavy'},{skill:'spin', every:2}], summon:{id:'spin_unit', frac:0.4}},
+  rival_max: {moves:[{skill:'heavy'},{skill:'lug', every:2}], summon:{id:'hedge_algo', frac:0.4}},
+  rival_tan: {moves:[{skill:'lug'},{skill:'heavy', every:2}]},
+  rival_lucian:{moves:[{skill:'spin'},{skill:'lug', every:2}]},
+  bullock_p1:{moves:[{skill:'lug'},{skill:'audit', every:2},{skill:'bellow', every:3}]},
+  bullock_p2:{moves:[{skill:'lug'},{skill:'heavy', every:2},{skill:'audit', every:3}]}
+};
+
+/* ===TWEAK: TUNING — the balance knobs. Values are phase-1 baseline. === */
+const TUNING={
+  dmgVar:0.15,          /* damage randomness ±15% */
+  defCoef:0.55,         /* how much DEF softens damage */
+  critChance:0.08, critMult:1.6,
+  buffTurns:3,
+  postBattleHeal:0.5,   /* fraction of maxHP recovered after a won fight */
+  postBattleMP:0.6,     /* fraction of maxMP recovered after a won fight */
+  koAfterBattle:1,      /* downed allies revive here (HP floor) */
+  shakenAtk:0.85,       /* atk multiplier when party starts battles Shaken */
+  lossCashPenalty:0.2,  /* retreat loses this fraction of cash — never fatal */
+  ratchet:{hp:0.12, atk:0.10, reward:0.15},
+  /* per-stage scaling: level per milestone stamped */
+  charLvlHP:0.10, charLvlMP:0.06, charLvlATK:0.12, charLvlDEF:0.06,
+  raid:{triggerCort:9, cash:0.3, nerf:0.25},
+  allyUpKeepMaxMP:false
+};
+/* scripted foe "moves" — the six shapes all AI pulls from (TWEAK) */
+const FOE_MOVES={
+  heavy:{d:'standard press', pw:1.0},
+  lug:  {d:'big single swing', pw:1.45, name:'DUMP-TRUCK SWING'},
+  spin: {d:'party nudge + focus', pw:0.75, aoe:true, name:'FLOOR SPIN'},
+  audit:{d:'locks the least-useful ally', pw:0.5, status:'audited', name:'AUDITED'},
+  bellow:{d:'shakes the room; party atk down', pw:0.35, status:'shaken', name:'SINISTER BELLOW'}
+};
+/* party Shaken threshold hook (cortisol) */
+const CORT={shaken:7, raid:9};
+
+/* ===TWEAK: SKILL_FX — what every skill does in battle. pw multiplies the
+   actor's ATK for offense, or is flat HP/MP for heals and buffs. Adding a
+   new fx shape requires engine support; re-tuning pw never does. === */
+const SKILL_FX={
+  /* butler */
+  tea_bickies:{fx:'partyheal', pw:16},
+  silver_service:{fx:'cleanse', pw:2},
+  doilies:{fx:'defbuff', pw:5},
+  high_tea:{fx:'revive', pw:0.5},
+  final_polish:{fx:'bigheal', pw:38},
+  /* max */
+  wallet_wall:{fx:'taunt', pw:3},
+  term_deposit:{fx:'dmg', pw:1.5},
+  cds_casino:{fx:'wildcard', pw:1.0},
+  leveraged_banter:{fx:'atkbuff', pw:6},
+  margin_absolve:{fx:'revive', pw:1.0},
+  /* aidan */
+  rate_hike:{fx:'atkdown', pw:5},
+  qe:{fx:'regen', pw:5},
+  somp:{fx:'atkbuffAll', pw:4},
+  sticky_infl:{fx:'dot', pw:7},
+  /* lane */
+  toktimer:{fx:'dmg', pw:1.3, crit:0.45},
+  plant_bug:{fx:'atkdown', pw:4},
+  dossier:{fx:'reveal', pw:0},
+  backtest:{fx:'atkdown', pw:3},
+  edge_case:{fx:'dmg', pw:2.1},
+  /* simring */
+  media_spin:{fx:'defbuff', pw:6},
+  quest_time:{fx:'skipfoe', pw:999},
+  front_page:{fx:'charm', pw:999},
+  leak:{fx:'dot', pw:6},
+  shockjock:{fx:'massdown', pw:5},
+  /* swain */
+  red_tape:{fx:'skipfoe', pw:999},
+  form47:{fx:'defbuff', pw:10},
+  proc_motion:{fx:'skipfoeAll', pw:999},
+  circular:{fx:'heal', pw:30},
+  long_stare:{fx:'taunt', pw:2},
+  /* kiran */
+  loaded_dice:{fx:'wildcard', pw:1.1},
+  allnighter:{fx:'revive', pw:1.0},
+  caffeine_sprint:{fx:'agibuff', pw:9},
+  stat_noise:{fx:'evasion', pw:12},
+  curve_flat:{fx:'confuse', pw:999},
+  /* jason */
+  cook_books:{fx:'dmg', pw:1.8},
+  cash_backer:{fx:'atkbuffAll', pw:5},
+  coal_buffet:{fx:'partyheal', pw:12},
+  seam41:{fx:'dmgAll', pw:1.1},
+  accc_ping:{fx:'taunt', pw:1},
+  /* lucian */
+  power_lunch:{fx:'charm', pw:999},
+  long_lunch:{fx:'skipfoeAll', pw:999},
+  golf_invite:{fx:'partyclean', pw:2},
+  quiet_word:{fx:'atkdown', pw:4},
+  donors_round:{fx:'atkbuffAll', pw:7},
+  /* tan */
+  short_squeeze:{fx:'dmg', pw:1.9},
+  insider_sprint:{fx:'agibuff', pw:7},
+  pivot_ai:{fx:'confuse', pw:999},
+  scalp:{fx:'dmg', pw:0.9},
+  reversal:{fx:'dmg', pw:2.6, cooldown:3},
+  /* shared / story */
+  budget_leak:{fx:'dmg', pw:1.4},
+  fiscal_mult:{fx:'partyheal', pw:18},
+  hedge_all:{fx:'defbuff', pw:8},
+  accord:{fx:'accord', pw:0}
+};
+/* ===TWEAK: wild dice table for loaded_dice / cds_casino === */
+const DICE_TABLE=[
+  {fx:'dmg', pw:1.4, label:'LUCKY STRIKE'},
+  {fx:'partyheal', pw:14, label:'GROUP REIMBURSEMENT'},
+  {fx:'atkbuffAll', pw:4, label:'VIRAL MOMENT'},
+  {fx:'evasion', pw:10, label:'BENEFICIAL AUDIT DELAY'},
+  {fx:'cort', pw:1, label:'STRESS BALL INCIDENT'},
+  {fx:'dmg', pw:0.4, label:'ROLL OF 1 (MISCELLANEOUS FILING FEE)'}
+];
+
+/* ---- ENEMIES (visuals + loot; statlines in ENEMY_STATS above) ---- */
 const ENEMIES={
   b4_guard:{name:'Big Four Suit Security',emoji:'🕴',count:3,
     line:'“Do you have an appointment, or an umbrella? Either counts. Only one protects.”'},
@@ -817,6 +999,7 @@ function freshState(pcid){
     bench:[],
     items:{},
     upgrades:{},   /* P3: bug pinned, dossier pinned etc. */
+    st:{},         /* P2: persistent hp/mp per roster member */
     mood:'CALM',
     deckPos:0,
     scene:null, block:0,
@@ -1000,8 +1183,15 @@ function renderHUD(){
     im.onerror=()=>{ fr.classList.add('silh'); im.remove(); };
     fr.appendChild(im);
     d.appendChild(fr);
+    ensurePartyStats();
+    const hpPct=Math.round(100*G.st[id].hp/maxStats(id).maxhp);
     d.insertAdjacentHTML('beforeend',
-      '<div class="bi"><div class="nm">'+ch.name+'</div><div class="cl">'+ch.cls+'</div></div>');
+      '<div class="bi"><div class="nm">'+ch.name+'</div>'+
+      '<div style="height:4px;background:rgba(255,255,255,.12);margin:2px 0">'+
+      '<div style="height:4px;width:'+hpPct+'%;background:'+
+      (hpPct<35? 'var(--red)':'#7fd694')+'"></div></div>'+
+      '<div class="cl" style="font-size:10px">HV '+G.st[id].hp+'/'+maxStats(id).maxhp+
+      ' · MP '+G.st[id].mp+'</div></div>');
     pt.appendChild(d);
   });
   const b=document.createElement('div'); b.className='benchcount';
@@ -1266,6 +1456,7 @@ function addDialogue(b){
 function joinChar(id){
   const ch=CHARS[id]; if(!ch || G.party.includes(id)) return;
   if(G.party.length<4) G.party.push(id); else G.bench.push(id);
+  ensurePartyStats();  /* seed fresh hp/mp for the newcomer */
   log('JOINED: '+ch.name);
   toast('＋ '+ch.name+' joins','intel'); beep('coin');
   renderHUD(); save(true);
@@ -1295,37 +1486,560 @@ function addChoice(b){
   st.appendChild(w); st.scrollTop=st.scrollHeight;
 }
 
-/* — battle stub (P2 replaces with real turn engine) — */
-function addBattleStub(b){
-  const en=ENEMIES[b.id]||{name:'UNKNOWN HOSTILE',emoji:'♟'};
-  const st=$('stage');
-  const w=document.createElement('div'); w.className='beat bstub';
-  const pr=document.createElement('div'); pr.className='chprompt';
-  pr.style.color='var(--red)'; pr.textContent='⚔ '+en.name.toUpperCase();
-  w.appendChild(pr);
-  const n=Math.min(Math.max(en.count||1,1),5);
-  for(let i=0;i<n;i++){
-    const row=document.createElement('div'); row.className='enemyrow';
-    row.innerHTML=(en.emoji||'♟')+' '+en.name+(n>1?' '+String.fromCharCode(65+i):'')+
-      '<span class="hp">HP ??/??</span>';
-    w.appendChild(row);
+/* — battle engine (P2) — */
+/* ============================================================
+   BATTLE ENGINE (P2) — turn-based, AGI order, statuses, AI scripts.
+   Numbers live in STATBASE/ENEMY_STATS/ENEMY_AI/FOE_MOVES/SKILL_FX/TUNING.
+   ============================================================ */
+
+function ensurePartyStats(){
+  if(!G.st) G.st={};
+  const all=G.party.concat(G.bench);
+  all.forEach(id=>{
+    if(!G.st[id]){
+      const m=maxStats(id);
+      G.st[id]={hp:m.maxhp, mp:m.maxmp};
+    }
+  });
+}
+function charLevel(){
+  let n=0; for(const k in G.mile) if(G.mile[k]) n++;
+  return Math.max(1,n);
+}
+function maxStats(id){
+  const b=STATBASE[id]||STATBASE.butler, lv=charLevel();
+  return {
+    maxhp: Math.round(b.hp*(1+TUNING.charLvlHP*(lv-1))),
+    maxmp: Math.round(b.mp*(1+TUNING.charLvlMP*(lv-1))),
+    atk: Math.round(b.atk*(1+TUNING.charLvlATK*(lv-1))),
+    def: Math.round(b.def*(1+TUNING.charLvlDEF*(lv-1))),
+    agi: b.agi
+  };
+}
+function charKit(id){
+  const lv=charLevel(), kit=KITS[id]||[];
+  return kit.slice(0, Math.min(kit.length, 1+Math.ceil(lv/2))).map(s=>SKILLS[s]).filter(Boolean);
+}
+
+/* --- statuses --- */
+function addStatus(u,st){
+  u.statuses.push({k:st.k, t:st.t||(TUNING.buffTurns), v:st.v||0, name:st.name||st.k});
+}
+function hasStatus(u,k){ return u.statuses.some(s=>s.k===k); }
+function eff(u){
+  let atk=u.atk, def=u.def, agi=u.agi;
+  u.statuses.forEach(s=>{
+    if(s.k==='atkdown') atk-=s.v||0;
+    if(s.k==='atkbuff') atk+=s.v||0;
+    if(s.k==='defbuff') def+=s.v||0;
+    if(s.k==='agibuff') agi+=s.v||0;
+    if(s.k==='shaken') atk*=TUNING.shakenAtk;
+  });
+  return {atk:Math.max(1,Math.round(atk)), def:Math.max(0,Math.round(def)), agi};
+}
+function rollVar(){ return 1-TUNING.dmgVar+Math.random()*2*TUNING.dmgVar; }
+function rollDamage(actor,target,pw){
+  const a=eff(actor), d=eff(target);
+  const crit=Math.random()<TUNING.critChance;
+  let v=(a.atk*(pw||1)*rollVar()) - d.def*TUNING.defCoef;
+  v=Math.max(1, Math.round(v*(crit? TUNING.critMult:1)));
+  return {v, crit};
+}
+function healUnit(u,amt){
+  const before=u.hp;
+  u.hp=Math.min(u.maxhp, u.hp+amt);
+  return u.hp-before;
+}
+
+/* --- unit factory --- */
+function mkPartyUnit(id){
+  const m=maxStats(id), stcha=G.st[id]||{hp:m.maxhp, mp:m.maxmp}, c=CHARS[id];
+  return {
+    side:'party', id, name:c.name, color:c.color, emoji:c.face||'☏',
+    hp:Math.max(TUNING.koAfterBattle, stcha.hp), mp:Math.max(0,stcha.mp),
+    maxhp:m.maxhp, maxmp:m.maxmp, atk:m.atk, def:m.def, agi:m.agi,
+    down: stcha.hp<=0, statuses:[], kit:charKit(id) /* array of skill ids */
+  };
+}
+function mkFoeUnit(eid,i,n){
+  const g=ENEMIES[eid]||{}, s=ENEMY_STATS[eid]||{}, lv=Math.max(1,G.phase-1);
+  const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)) : base;
+  return {
+    side:'foe', eid, tag:(n>1? ' '+String.fromCharCode(65+i):''),
+    name:(g.name||eid)+(n>1? String.fromCharCode(65+i):''),
+    emoji:g.emoji||'♟', hp:sc(s.hp,s.hp||30), maxhp:sc(s.hp,s.hp||30),
+    mp:s.mp||0, maxmp:s.mp||0, atk:sc(s.atk,s.atk||10), def:s.def||6, agi:s.agi||8,
+    boss:!!g.boss, statuses:[], summoned:false
+  };
+}
+
+/* --- the battle object --- */
+let BATTLE=null;
+function beginBattle(b, box){
+  ensurePartyStats();
+  const n=Math.min(Math.max((ENEMIES[b.id]&&(ENEMIES[b.id].count))||1,1),5);
+  const foes=Array.from({length:n},(_,i)=>mkFoeUnit(b.id,i,n));
+  const team=G.party.map(mkPartyUnit).filter(Boolean);
+  BATTLE={
+    b, team, foes, round:0, q:[], qi:0, log:[], over:false, win:false,
+    rewards: b.reward||{}, reveal:false, summoned:0, box
+  };
+  BATTLE.q=[...team,...foes].sort((a,z)=>eff(z).agi-eff(a).agi);
+  /* cortisol pre-fight: Shaken start at threshold */
+  if(G.cort>=CORT.shaken) team.forEach(u=>{ if(!u.down) addStatus(u,{k:'shaken', t:99, name:'SHAKEN'}); });
+  renderBattle();
+  battleBeat('⚔ '+((ENEMIES[b.id]||{}).name||'HOSTILES')+' — a turn-based fight begins.\n'+((ENEMIES[b.id]||{}).line||''));
+  nextTurn();
+}
+function battleBeat(msg){
+  if(BATTLE) { BATTLE.log.push(msg); if(BATTLE.log.length>60) BATTLE.log.shift(); }
+  renderBattle();
+}
+function renderBattle(){
+  const w=BATTLE&&BATTLE.box;
+  if(!w) return;
+  let html='';
+  BATTLE.foes.forEach(f=>{
+    const pct=Math.round(100*f.hp/f.maxhp);
+    html+='<div class="enemyrow" style="'+(f.down?'opacity:.35':'')+'">'+
+      f.emoji+' '+f.name+' <span class="hp" style="color:'+(pct<40?'var(--red)':'var(--ok)')+'">'+
+      (BATTLE.reveal? 'HP '+f.hp+'/'+f.maxhp : 'HP '+pct+'%')+
+      (hasStatus(f,'wound')?' · BLEEDING':'')+ (hasStatus(f,'charmed')?' · CHARMED':'')+
+      (hasStatus(f,'skip')?' · NO QUORUM':'')+'</span></div>';
+  });
+  html+='<div class="fine" style="margin-top:6px">'+
+    BATTLE.team.map(u=>(u.down?'<s>':'')+u.name+' '+u.hp+'/'+u.maxhp+' · MP '+u.mp+
+      (u.statuses.length? ' ['+u.statuses.map(s=>s.name).join(',')+']':'')+
+      (u.down?'</s>':'')).join(' · ')+'</div>';
+  html+='<div class="fine" style="white-space:pre-line;margin-top:6px">'+
+    BATTLE.log.slice(-6).join('\n')+'</div>';
+  w.innerHTML=html;
+}
+
+/* --- damage application --- */
+function hitFoe(f,amt,crit,who){
+  f.hp-=amt;
+  battleBeat((who||'')+' → '+f.name+' takes '+amt+(crit?' (CRIT!)':''));
+  if(f.hp<=0){ f.hp=0; f.down=true; battleBeat(f.name+' is dealt with.'); }
+}
+function hitParty(u,amt,who){
+  if(hasStatus(u,'evasion') && Math.random()<(u.statuses.find(s=>s.k==='evasion').v/100)){
+    battleBeat(u.name+' sidesteps entirely (paperwork excuse).'); return;
   }
-  const fine=document.createElement('div'); fine.className='fine';
-  fine.innerHTML=(en.line? '“'+en.line+'”<br><br>':'')+
-    (b.note||'')+
-    '<br>ESCROW FILLED: 💰$'+((b.reward&&b.reward.cash)||0)+' · 🛈'+((b.reward&&b.reward.intel)||0)+
-    ' · 🔥+'+((b.reward&&b.reward.cort)||0);
-  w.appendChild(fine);
-  const ok=document.createElement('button'); ok.textContent='WIN — P0 RESOLUTION';
+  u.hp-=amt;
+  battleBeat((who||'')+' hits '+u.name+' for '+amt);
+  if(u.hp<=0){ u.hp=0; u.down=true; battleBeat(u.name+' is out of the meeting.'); }
+}
+function alive(u){ return !u.down; }
+function teamAlive(){ return BATTLE.team.filter(alive); }
+function foesAlive(){ return BATTLE.foes.filter(alive); }
+function pickFoeTarget(){
+  const locked=BATTLE.team.find(u=>alive(u)&&hasStatus(u,'taunt'));
+  if(locked) return locked;
+  const pool=teamAlive();
+  return pool.sort((a,z)=>a.hp/a.maxhp - z.hp/z.maxhp)[0];
+}
+function windup(u){ /* upkeep at each unit's turn */
+  u.statuses.forEach(s=>{
+    if(s.k==='wound') hitFoeDot(u,s);
+  });
+  u.statuses=u.statuses.filter(s=>{
+    if(s.k==='regen') healUnit(u,s.v);
+    return --s.t>0;
+  });
+}
+function hitFoeDot(f,s){
+  if(f.down) return;
+  f.hp-=s.v;
+  battleBeat(f.name+' bleeds '+s.v+' (stuck holding the bag).');
+  if(f.hp<=0){ f.hp=0; f.down=true; battleBeat(f.name+' is dealt with.'); }
+}
+
+/* --- skill fx dispatch (shared by party skills and foe moves) --- */
+function applyFx(actor, target, def, label){
+  const fx=def.fx, pw=def.pw||0;
+  const foes=foesAlive(), team=teamAlive();
+  const dmgTo=(t,p)=>{
+    const {v,crit}=rollDamage(actor,t,p); hitFoe(t,v,crit,actor.name);
+  };
+  switch(fx){
+    case 'dmg': dmgTo(target, pw*(def.crit&&Math.random()<def.crit? TUNING.critMult:1)); break;
+    case 'dmgAll': foes.forEach(f=>{ if(!f.down) dmgTo(f,pw); }); break;
+    case 'partyheal': team.forEach(t=>{ const h=healUnit(t,pw); if(h) battleBeat(t.name+' recovers '+h+' HP.'); }); break;
+    case 'heal': { const h=healUnit(actor,pw); if(h) battleBeat(actor.name+' patches up '+h+' HP.'); break; }
+    case 'bigheal': { const h=healUnit(actor,pw); if(h) battleBeat(actor.name+' goes full service: +'+h+' HP.'); break; }
+    case 'revive': { const d=BATTLE.team.find(u=>u.down);
+      if(d){ d.down=false; d.hp=Math.round(d.maxhp*pw); battleBeat(d.name+' is back at the table.'); }
+      else battleBeat('Nobody to revive — the roster is intact.'); break; }
+    case 'cleanse': case 'partyclean': team.forEach(t=>{ t.statuses=[]; });
+      battleBeat('Party statuses swept under the rug (cleansing).'); break;
+    /* — buffs — */
+    case 'defbuff': addStatus(actor,{k:'defbuff', v:pw, name:'DEF+'}); battleBeat(actor.name+' raises DEF by '+pw+'.'); break;
+    case 'atkbuff': addStatus(actor,{k:'atkbuff', v:pw, name:'ATK+'}); battleBeat(actor.name+' raises ATK by '+pw+'.'); break;
+    case 'atkbuffAll': team.forEach(t=>addStatus(t,{k:'atkbuff', v:pw, name:'ATK+'})); battleBeat('Party ATK +'+pw+'.'); break;
+    case 'agibuff': team.forEach(t=>addStatus(t,{k:'agibuff', v:pw, name:'AGI+'})); battleBeat('Party gets jumpy (AGI +'+pw+').'); break;
+    case 'regen': team.forEach(t=>addStatus(t,{k:'regen', v:pw, t:TUNING.buffTurns, name:'REGEN'}));
+      battleBeat('Steady recovery booked for the whole party.'); break;
+    case 'evasion': team.forEach(t=>addStatus(t,{k:'evasion', v:pw, name:'EVADE'})); battleBeat('Party pre-books plausible deniability.'); break;
+    case 'taunt': addStatus(actor,{k:'taunt', t:2, name:'AGGRO'}); battleBeat(actor.name+' absorbs attention (all eyes here).'); break;
+    /* — debuffs — */
+    case 'atkdown': if(!target.down){ addStatus(target,{k:'atkdown', v:pw, name:'ATK−'}); battleBeat(target.name+' loses '+pw+' ATK.'); } break;
+    case 'massdown': foes.forEach(f=>{ if(!f.down){ addStatus(f,{k:'atkdown', v:pw, name:'ATK−'}); } }); battleBeat('All hostiles hit with ATK−'+pw+'.'); break;
+    case 'dot': if(!target.down){ addStatus(target,{k:'wound', v:pw, t:4, name:'BLEED'}); battleBeat(target.name+' will bleed '+pw+'/turn.'); } break;
+    case 'skipfoe': if(!target.down){ addStatus(target,{k:'skip', t:2, name:'NO QUORUM'}); battleBeat(target.name+' is Red-Taped into inaction.'); } break;
+    case 'skipfoeAll': foes.forEach(f=>{ if(!f.down){ addStatus(f,{k:'skip', t:2, name:'NO QUORUM'}); } });
+      battleBeat('The whole other side is Red-Taped.'); break;
+    case 'charm': if(!target.down){ addStatus(target,{k:'charmed', t:2, name:'CHARMED'}); battleBeat(target.name+' is charmed — someone else’s agenda now.'); } break;
+    case 'confuse': if(!target.down){ addStatus(target,{k:'skip', t:2, name:'CONFUSED'}); battleBeat(target.name+' loses the plot.'); } break;
+    case 'reveal': BATTLE.reveal=true; battleBeat('The dossier is open — statlines exposed.'); break;
+    case 'cort': G.cort=Math.max(0,Math.min(9,G.cort+pw)); battleBeat('Cortisol '+(pw>0?'+':'')+pw+'.'); break;
+    case 'wildcard': {
+      const roll=DICE_TABLE[Math.floor(Math.random()*DICE_TABLE.length)];
+      battleBeat('🎲 '+roll.label+'!'); applyFx(actor, target, roll, roll.label); break; }
+    case 'accord': team.forEach(t=>{ t.down=false; t.hp=t.maxhp; t.mp=t.maxmp; });
+      foes.forEach(f=>{ if(!f.down){ f.hp=Math.round(f.hp*0.45); if(f.hp<=0)f.down=true; } });
+      battleBeat('*THE ACCORD* — the mandates align. Party restored, hostiles staggered.'); break;
+    default: battleBeat(label+' (no git-blameable effect).');
+  }
+}
+
+/* --- foe AI turn --- */
+function foeTurn(f){
+  if(f.down) return;
+  if(hasStatus(f,'skip')){ battleBeat(f.name+' stands around being Red-Taped.'); return; }
+  if(hasStatus(f,'charmed')){ battleBeat(f.name+' doodles approvingly and passes.'); return; }
+  const ai=ENEMY_AI[f.eid]||{};
+  /* boss summon once below hp threshold */
+  if(ai.summon && !f.summoned && f.hp/f.maxhp < ai.summon.frac){
+    f.summoned=true;
+    const minion=mkFoeUnit(ai.summon.id, f.tag? 1:0, 1);
+    BATTLE.foes.push(minion);
+    battleBeat('⚑ '+f.name+' calls for backup: '+minion.name+' arrives.');
+    BATTLE.q.push(minion);
+    return;
+  }
+  const script=(ai.moves||[{skill:'heavy'}]).filter(m=>!(m.every&&BATTLE.round%m.every!==0));
+  if(!script.length) return;
+  const mv=script[Math.floor(Math.random()*script.length)];
+  const move=FOE_MOVES[mv.skill]||FOE_MOVES.heavy;
+  const a=eff(f);
+  const vsParty=(t,p)=>hitParty(t, Math.max(1, Math.round(a.atk*p*rollVar() - eff(t).def*TUNING.defCoef)), f.name);
+  if(move.status==='audited'){
+    const t=pickFoeTarget();
+    vsParty(t, move.pw);
+    addStatus(t,{k:'skip', t:1, name:'AUDITED'});
+    battleBeat(t.name+' is AUDITED — loses a turn.');
+  } else if(move.status==='shaken'){
+    teamAlive().slice().forEach(t=>vsParty(t, move.pw));
+    teamAlive().forEach(t=>addStatus(t,{k:'shaken', t:2, name:'SHAKEN'}));
+    battleBeat('The room is shaken.');
+  } else if(move.aoe){
+    teamAlive().slice().forEach(t=>vsParty(t, move.pw));
+  } else {
+    vsParty(pickFoeTarget(), move.pw);
+  }
+}
+
+/* --- party turn menus --- */
+function partyTurn(u){
+  retireBeats();
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  pr.textContent='⚔ '+u.name+': HP '+u.hp+'/'+u.maxhp+' · MP '+u.mp+' — your move:';
+  w.appendChild(pr);
+  const opts=[
+    {x:'Attack', fn:()=>menuTarget(u)},
+  ];
+  if(u.kit.length) opts.push({x:'Skill', fn:()=>menuSkill(u)});
+  if(Object.values(G.items||{}).some(c=>c>0)) opts.push({x:'Item', fn:()=>menuItem(u)});
+  opts.push({x:'Defend — brace, halve next hit', fn:()=>{
+    addStatus(u,{k:'defbuff', v:Math.round(u.def*0.5+2), t:1, name:'BRACED'});
+    battleBeat(u.name+' braces.'); nextTurn();
+  }});
+  opts.push({x:'Flake out — burn 1🛈 for a free pass', fn:()=>{
+    if(G.intel>0){ G.intel--; battleBeat(u.name+' outsources this turn to a contractor.'); renderHUD(); }
+    else battleBeat('No intel left to burn. The contractor ghosts.');
+    nextTurn();
+  }});
+  opts.forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">'+(i+1)+'.</span> '+o.x;
+    btn.onclick=()=>{ beep('tick'); w.remove(); o.fn(); };
+    w.appendChild(btn);
+  });
+  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+}
+function menuTarget(u,useSkill,tgt){
+  retireBeats();
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  pr.textContent=(useSkill? SKILLS[useSkill].name: 'Attack')+' → target?';
+  w.appendChild(pr);
+  BATTLE.foes.filter(f=>!f.down).forEach(f=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">▸</span> '+f.emoji+' '+f.name+' <span class="hp">'+
+      (BATTLE.reveal? 'HP '+f.hp+'/'+f.maxhp:'')+'</span>';
+    btn.onclick=()=>{
+      beep('hit'); w.remove();
+      if(useSkill){ castSkill(u, SKILLS[useSkill], f); }
+      else { const {v,crit}=rollDamage(u,f,1); hitFoe(f,v,crit,u.name); nextTurn(); }
+    };
+    w.appendChild(btn);
+  });
+  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+}
+function menuSkill(u){
+  retireBeats();
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  pr.textContent='⚔ '+u.name+' — which skill?';
+  w.appendChild(pr);
+  u.kit.forEach(sk=>{
+    const c=sk.cost||0;
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.disabled=(u.mp<c);
+    btn.innerHTML='<span class="k">▸</span> '+sk.name+' <span class="hp">MP '+c+
+      '</span><small>'+(sk.d||'')+'</small>';
+    btn.onclick=()=>{
+      if(u.mp<c){ toast('NOT ENOUGH MP','bad'); return; }
+      beep('intel'); w.remove(); u.mp-=c;
+      const fx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
+      if(['dmg','atkdown','dot','skipfoe','charm','confuse'].includes(fx.fx)){
+        menuTarget(u, sk.id);
+      } else {
+        battleBeat(u.name+' uses '+sk.name+'!');
+        applyFx(u, pickFoeTarget(), fx, sk.name); nextTurn();
+      }
+    };
+    w.appendChild(btn);
+  });
+  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+}
+function castSkill(u,sk,target){
+  const fx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
+  battleBeat(u.name+' uses '+sk.name+'!');
+  applyFx(u, target, fx, sk.name);
+  nextTurn();
+}
+function menuItem(u){
+  retireBeats();
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  pr.textContent='⚔ '+u.name+' — use which item?';
+  w.appendChild(pr);
+  Object.entries(G.items||{}).filter(([,c])=>c>0).forEach(([iid])=>{
+    const it=ITEMS[iid]; if(!it) return;
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">▸</span> '+(it.emoji||'')+' '+it.name+
+      ' ×'+G.items[iid]+(it.heal? ' <span class="k">+'+it.heal+' HPV</span>':'')+
+      (it.cleanse? ' · cleanse':'');
+    btn.onclick=()=>{
+      G.items[iid]--; if(G.items[iid]<=0) delete G.items[iid];
+      const h=healUnit(u,(it.heal||15));
+      battleBeat(u.name+' uses '+it.name+' +'+h+' HP.');
+      beep('coin'); w.remove(); nextTurn();
+    };
+    w.appendChild(btn);
+  });
+  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+}
+/* --- turn queue --- */
+function nextTurn(){
+  renderBattle();
+  if(!teamAlive().length){ endBattle(false); return; }
+  if(!foesAlive().length){ endBattle(true); return; }
+  /* advance q to next living unit */
+  let tries=0;
+  do{
+    BATTLE.qi++;
+    if(BATTLE.qi>=BATTLE.q.length){
+      BATTLE.qi=0; BATTLE.round++;
+      /* upkeep all at round rollover */
+      [...BATTLE.foes,...BATTLE.team].forEach(u=>{ if(!u.down) upkeep(u); });
+      if(!foesAlive().length){ endBattle(true); return; }
+      if(!teamAlive().length){ endBattle(false); return; }
+    }
+    tries++;
+  } while(tries<40 && BATTLE.q[BATTLE.qi].down);
+  const cur=BATTLE.q[BATTLE.qi];
+  if(cur.side==='party') partyTurn(cur); else foeTurn(cur), nextTurn();
+}
+function upkeep(u){
+  /* tick statuses at each round rollover */
+  u.statuses.forEach(s=>{ if(s.k==='wound' && u.side==='foe') hitFoeDot(u,s); });
+  u.statuses.forEach(s=>{ if(s.k==='regen') healUnit(u,s.v); });
+  u.statuses=u.statuses.filter(s=> --s.t>0);
+}
+
+/* --- battle end --- */
+function endBattle(win){
+  BATTLE.over=true; BATTLE.win=win;
+  const box=BATTLE.box; if(box) box.innerHTML='';
+  const w=document.createElement('div'); w.className='beat';
+  if(win){
+    const r=BATTLE.rewards, rh=Math.round((TUNING.ratchet.reward*Math.max(1,G.phase-1)+1)*100)/100;
+    const cash=Math.round((r.cash||0)*rh), intel=r.intel||0, cort=(r.cort||0);
+    applyEffects({cash, intel, cort, note:'BATTLE WON: '+((ENEMIES[BATTLE.b.id]||{}).name||'')});
+    /* post-battle recovery */
+    BATTLE.team.forEach(u=>{
+      u.hp=Math.max(u.hp, Math.round(u.maxhp*TUNING.postBattleHeal));  /* floored heal */
+      u.mp=Math.min(u.maxmp, u.mp+Math.round(u.maxmp*TUNING.postBattleMP));
+      if(u.down){ u.hp=Math.max(TUNING.koAfterBattle, Math.round(u.maxhp*0.25)); u.down=false; }
+    });
+    persistUnits();
+    w.innerHTML='<div style="color:var(--ok)">✅ SITE SECURED — '+
+      ((ENEMIES[BATTLE.b.id]||{}).name||'HOSTILES')+' stood down.</div>'+
+      '<div class="fine">The party catches its breath: +'+Math.round(TUNING.postBattleHeal*100)+'% HP, +'+
+      Math.round(TUNING.postBattleMP*100)+'% MP. Downed allies rejoin at the medic’s discretion.'+
+      (BATTLE.b.note? '<br>'+BATTLE.b.note:'')+'</div>';
+  } else {
+    const loss=Math.round(G.cash*TUNING.lossCashPenalty);
+    G.cash-=loss;
+    BATTLE.team.forEach(u=>{ u.hp=Math.round(u.maxhp*0.5); u.mp=Math.round(u.maxmp*0.5); u.down=false; });
+    persistUnits();
+    w.innerHTML='<div style="color:var(--red)">🟥 WITHDRAWAL — the site was not held.</div>'+
+      '<div class="fine">No game over — only fees. −$'+loss+' to “consulting”, and the story continues at the hub. Regroup, restock, and find a better angle. The rival of record will claim they were “basically there”.</div>';
+    log('RETREAT: '+((ENEMIES[BATTLE.b.id]||{}).name||''));
+  }
+  const ok=document.createElement('button'); ok.textContent='CONTINUE';
   ok.onclick=()=>{
-    beep('coin');
-    applyEffects({cash:(b.reward&&b.reward.cash)||0, intel:(b.reward&&b.reward.intel)||0,
-      cort:(b.reward&&b.reward.cort)||0, note:'BATTLE WON (stub): '+en.name});
-    advance();
+    beep(win? 'coin':'bad'); renderHUD(); save(true);
+    if(R.onBattleDone){ const f=R.onBattleDone; R.onBattleDone=null; f(BATTLE.win); }
+    else if(win) advance();
+    else gotoScene('hub');
   };
   w.appendChild(ok);
-  st.appendChild(w); st.scrollTop=st.scrollHeight;
+  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+  BATTLE=null;
 }
+function persistUnits(){
+  ensurePartyStats();
+  BATTLE.team.forEach(u=>{
+    if(u.down) return;
+    G.st[u.id]={hp:u.hp, mp:u.mp};
+  });
+}
+
+/* scene-block battle: real engine with scripted retreat fallback */
+function addBattleStub(b){
+  const box=document.createElement('div'); box.className='beat';
+  box.style.border='1px solid rgba(255,255,255,.15)'; box.style.padding='10px'; box.style.margin='8px 0';
+  $('stage').appendChild(box);
+  beginBattle(b, box);
+}
+/* scripted battle runner (dev/harness): acts[] may use 'attack' (target auto:
+   lowest-HP foe), ['skill', skillId] (target auto), 'item:<id>', 'defend' */
+function testBattle(partyIds, eid, acts){
+  const savedParty=G.party.slice(), savedScene=R.scene;
+  G.party=partyIds.slice();
+  ensurePartyStats();
+  const fakeScene={...SCENES['hub']}, fakeBlock={t:'battle', id:eid, reward:{}};
+  G.party.forEach(id=>{ if(!G.st[id]){ const m=maxStats(id); G.st[id]={hp:m.maxhp, mp:m.maxmp}; } });
+  const n=Math.min(Math.max((ENEMIES[eid]&&(ENEMIES[eid].count))||1,1),5);
+  const foes=Array.from({length:n},(_,i)=>mkFoeUnit(eid,i,n));
+  const team=G.party.map(mkPartyUnit);
+  let q=[...team,...foes].sort((a,z)=>eff(z).agi-eff(a).agi);
+  let qi=-1, round=0, out=[], turn=0, win=null, guard=0;
+  const clog=m=>out.push(m);
+  const aliveA=()=>team.filter(u=>!u.down), aliveF=()=>foes.filter(f=>!f.down);
+  const stat=(u,s)=>u.statuses.some(x=>x.k===s);
+  const add=(u,s)=>u.statuses.push({...s});
+  const tickUp=()=>{ [...foes,...team].forEach(u=>{ if(!u.down){
+    u.statuses=u.statuses.filter(s=>{ if(s.k==='regen') healU(u,  s.v||0, u.maxhp); return --s.t>0; }); } }); };
+  const healU=(u,v,mx)=>{ u.hp=Math.min(mx||u.maxhp, u.hp+v); };
+  const dmgF=(f,v,c,who)=>{ f.hp-=v; clog((who||'?')+' → '+f.name+' '+v+(c?' CRIT':''));
+    if(f.hp<=0){ f.hp=0; f.down=true; clog(f.name+' down'); } };
+  const dmgP=(u,v,who)=>{ u.hp-=v; clog((who||'?')+' hits '+u.name+' '+v);
+    if(u.hp<=0){ u.hp=0; u.down=true; clog(u.name+' KO'); } };
+  const rollD=(a,tm,pw)=>{ const e=eff2(a), d2=eff2(tm);
+    const crit=Math.random()<TUNING.critChance;
+    return { v:Math.max(1,Math.round(e.atk*(pw||1)*rollVar()-d2.def*TUNING.defCoef)), crit }; };
+  function eff2(u){ let atk=u.atk, def=u.def, agi=u.agi;
+    u.statuses.forEach(s=>{ if(s.k==='atkdown')atk-=s.v||0; if(s.k==='atkbuff')atk+=s.v||0;
+      if(s.k==='defbuff')def+=s.v||0; if(s.k==='agibuff')agi+=s.v||0; if(s.k==='shaken')atk*=TUNING.shakenAtk; });
+    return {atk:Math.max(1,atk|0),def:Math.max(0,def|0),agi}; }
+  while(guard++<500){
+    qi++;
+    if(qi>=q.length){ qi=0; round++; tickUp(); }
+    if(!aliveA().length){ win=false; break; }
+    if(!aliveF().length){ win=true; break; }
+    const cur=q[qi]; if(cur.down) continue;
+    if(cur.side==='foe'){
+      if(stat(cur,'skip')||stat(cur,'charmed')){ clog(cur.name+' skips'); continue; }
+      const ai=ENEMY_AI[cur.eid]||{};
+      if(ai.summon && !cur.summoned && cur.hp/cur.maxhp<ai.summon.frac){
+        cur.summoned=true;
+        const m=mkFoeUnit(ai.summon.id,foes.length,1); foes.push(m); q.push(m);
+        clog('⚑ summon: '+m.name); continue;
+      }
+      const cands=(ai.moves||[{skill:'heavy'}]).filter(m2=>!(m2.every&&round%m2.every!==0));
+      if(!cands.length) continue;
+      const mv=cands[Math.floor(Math.random()*cands.length)];
+      const move=FOE_MOVES[mv.skill]||FOE_MOVES.heavy;
+      const e=eff2(cur);
+      const targets= aliveA().slice().sort((a,z)=>a.hp/a.maxhp-z.hp/z.maxhp);
+      const vsParty=(t,p)=>dmgP(t, Math.max(1, Math.round(e.atk*p*rollVar() - eff2(t).def*TUNING.defCoef)), cur.name);
+      if(move.status==='audited'){ const t=targets[0]; vsParty(t,move.pw); add(t,{k:'skip',t:1}); }
+      else if(move.aoe){ targets.forEach(t=>vsParty(t,move.pw)); }
+      else { vsParty(targets[0],move.pw); }
+    } else {
+      const act=(acts&&acts[turn%acts.length])||'attack'; turn++;
+      if(act==='defend'){ add(cur,{k:'defbuff',v:Math.round(cur.def*0.5+2),t:1}); clog(cur.name+' braces'); }
+      else if(String(act).startsWith('item:')){ const it=ITEMS[act.slice(5)];
+        healU(cur,(it&&it.heal)||15); clog(cur.name+' uses item +'+((it&&it.heal)||15)); }
+      else if(act[0]==='skill'){
+        const sk=SKILLS[act[1]];
+        if(!sk){ clog('unknown skill'); continue; }
+        cur.mp=Math.max(0,cur.mp-(sk.cost||0));
+        const t=aliveF().sort((a,z)=>a.hp-a.maxhp)[0]||foes[0];
+        applyFxMock(cur,t,sk,out,rollD,dmgF,add,stat,aliveF,team,foes);
+      }
+      else { const t=aliveF().sort((a,z)=>a.hp-a.maxhp-z.hp)[0];
+        const {v,crit}=rollD(cur,t,1); dmgF(t,v,crit,cur.name); }
+    }
+  }
+  G.party=savedParty;
+  return {win, turns:turn, log:out.slice(0,40), foesLeft:aliveF().length, teamLeft:aliveA().length};
+}
+/* mock fx runner mirroring applyFx shape without touching the live DOM */
+function applyFxMock(actor,target,sk,out,rollD,dmgF,add,stat,aliveF,team,foes){
+  const fx=SKILL_FX[sk.id]||{fx:'dmg',pw:1}, pw=fx.pw||0;
+  out.push(actor.name+' casts '+sk.name+' ('+fx.fx+')');
+  const F=aliveF();
+  switch(fx.fx){
+    case 'dmg': { if(!target||target.down) target=F[0]; if(target){ const {v,crit}=rollD(actor,target,pw*(fx.crit&&Math.random()<fx.crit? TUNING.critMult:1)); dmgF(target,v,crit,actor.name);} break; }
+    case 'dmgAll': F.forEach(f=>{ const {v,crit}=rollD(actor,f,pw); dmgF(f,v,crit,actor.name); }); break;
+    case 'partyheal': team.forEach(t=>{ if(!t.down){ t.hp=Math.min(t.maxhp,t.hp+pw); out.push(t.name+' +'+pw); } }); break;
+    case 'heal': case 'bigheal': actor.hp=Math.min(actor.maxhp,actor.hp+pw); out.push(actor.name+' +'+pw); break;
+    case 'revive': { const d=team.find(t=>t.down); if(d){ d.down=false; d.hp=Math.round(d.maxhp*pw); out.push(d.name+' revived'); } break; }
+    case 'cleanse': case 'partyclean': team.forEach(t=>t.statuses=[]); out.push('cleansed'); break;
+    case 'defbuff': add(actor,{k:'defbuff',v:pw,t:3}); break;
+    case 'atkbuff': add(actor,{k:'atkbuff',v:pw,t:3}); break;
+    case 'atkbuffAll': team.forEach(t=>add(t,{k:'atkbuff',v:pw,t:3})); break;
+    case 'agibuff': team.forEach(t=>add(t,{k:'agibuff',v:pw,t:3})); break;
+    case 'regen': team.forEach(t=>add(t,{k:'regen',v:pw,t:3})); break;
+    case 'evasion': team.forEach(t=>add(t,{k:'evasion',v:pw,t:3})); break;
+    case 'taunt': add(actor,{k:'taunt',t:2}); break;
+    case 'atkdown': if(target&&!target.down){ add(target,{k:'atkdown',v:pw,t:3}); out.push(target.name+' ATK−'+pw); } break;
+    case 'massdown': F.forEach(f=>add(f,{k:'atkdown',v:pw,t:3})); break;
+    case 'dot': if(target&&!target.down){ add(target,{k:'wound',v:pw,t:4}); out.push(target.name+' BLEED '+pw); } break;
+    case 'skipfoe': if(target&&!target.down){ add(target,{k:'skip',t:2}); } break;
+    case 'skipfoeAll': F.forEach(f=>add(f,{k:'skip',t:2})); break;
+    case 'charm': case 'confuse': if(target&&!target.down){ add(target,{k:'charmed',t:2}); } break;
+    case 'reveal': out.push('dossier open'); break;
+    case 'cort': out.push('cort '+pw); break;
+    case 'wildcard': { const roll=DICE_TABLE[Math.floor(Math.random()*DICE_TABLE.length)];
+      out.push('🎲 '+roll.label);
+      if(roll.fx==='dmg'&&target&&!target.down){ const {v,crit}=rollD(actor,target,roll.pw); dmgF(target,v,crit,'dice'); }
+      if(roll.fx==='partyheal') team.forEach(t=>{ if(!t.down) t.hp=Math.min(t.maxhp,t.hp+roll.pw); });
+      if(roll.fx==='atkbuffAll') team.forEach(t=>add(t,{k:'atkbuff',v:roll.pw,t:3}));
+      if(roll.fx==='evasion') team.forEach(t=>add(t,{k:'evasion',v:roll.pw,t:3}));
+      break; }
+    case 'accord': team.forEach(t=>{ t.down=false; t.hp=t.maxhp; t.mp=t.maxmp; });
+      F.forEach(f=>{ f.hp=Math.round(f.hp*0.45); if(f.hp<=0)f.down=true; }); break;
+  }
+}
+
 
 /* ============================================================
    UI — stub panels: shop / swap / ops / backrooms (real panels P1+)
@@ -1544,7 +2258,16 @@ window.BCRPG={
   give:(cash,intel,cort)=>{ G.cash+=cash||0; G.intel+=intel||0;
     G.cort=Math.max(0,Math.min(9,(G.cort||0)+(cort||0))); renderHUD(); save(true); },
   flag:(k,v)=>{ setF(k,v); renderHUD(); save(true); },
-  mute:()=>{ $('btnMute').click(); }
+  mute:()=>{ $('btnMute').click(); },
+  /* P2 battle API: ids, 'enemyId', script — attacks/skills/defend */
+  testBattle,
+  TUNING, SKILL_FX, STATBASE, ENEMY_STATS, ENEMY_AI
+};
+/* old-save migration: seed missing P2 fields without touching v:1 shape */
+const _origContinue=continueGame;
+continueGame=function(){
+  _origContinue();
+  if(G){ ensurePartyStats(); }
 };
 </script>
 </body>
