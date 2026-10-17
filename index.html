@@ -274,6 +274,14 @@ button:disabled{opacity:.35;cursor:not-allowed}
   <button id="mstoneOk">THE CLOCK TICKS</button>
 </div></div>
 
+<div class="overlay" id="evov"><div class="modal" style="border-color:#b18cff">
+  <div class="chip red">MARKET EVENT</div>
+  <div id="evName" style="font-size:clamp(22px,5vw,40px);font-weight:bold;margin:10px 0;color:#b18cff"></div>
+  <div id="evLine" style="color:var(--dim);margin-bottom:12px;max-width:560px"></div>
+  <div id="evFx" class="sub" style="max-width:560px"></div>
+  <button id="evOk">THE MARKET REACTS</button>
+</div></div>
+
 <div class="overlay" id="stov"><div class="modal">
   <h2 id="stTitle"></h2><div class="sub" id="stSub"></div>
   <div id="stBody" style="margin-bottom:18px;line-height:1.7;font-size:14px"></div>
@@ -481,7 +489,7 @@ const ENEMY_STATS={
   hedge_algo: {hp:40, mp:8,  atk:11, def:6,  agi:14},
   spin_unit:  {hp:36, mp:10, atk:10, def:7,  agi:11},
   asic_drone: {hp:38, mp:8,  atk:10, def:9,  agi:10},
-  asic_chief: {hp:110,mp:20, atk:14, def:14, agi:10},
+  asic_raid:  {hp:40, mp:10, atk:10, def:10, agi:10},  asic_chief: {hp:110,mp:20, atk:14, def:14, agi:10},
   quant_wombat:{hp:44,mp:12, atk:11, def:10, agi:9},
   income_pol: {hp:42, mp:6,  atk:12, def:9,  agi:9},
   ibis:       {hp:33, mp:0,  atk:11, def:5,  agi:15},
@@ -506,6 +514,7 @@ const ENEMY_AI={
   hedge_algo:{moves:[{skill:'heavy'}]},
   spin_unit: {moves:[{skill:'spin', every:2},{skill:'heavy'}]},
   asic_drone:{moves:[{skill:'audit', every:2},{skill:'heavy'}]},
+  asic_raid: {moves:[{skill:'audit'},{skill:'heavy', every:2},{skill:'bellow', every:3}]},
   asic_chief:{moves:[{skill:'audit'}, {skill:'heavy', every:2}], summon:{id:'asic_drone', frac:0.5}},
   ibis_king: {moves:[{skill:'heavy'},{skill:'bellow', every:2}]},
   spokes_tr: {moves:[{skill:'heavy'},{skill:'audit', every:2},{skill:'bellow', every:3}]},
@@ -639,6 +648,8 @@ const ENEMIES={
     line:'“Position’s open. So is the exit. Timing is everything.”'},
   rival_lucian:{name:'THE FIRST RIVAL — LUCIAN',emoji:'🍽',boss:true,count:1,
     line:'“Lunch is enemies, or so I’ve financed.”'},
+  asic_raid:{name:'ASIC EMERGENCY RESPONSE TEAM',emoji:'🧾',count:3,
+    line:'“Routine check. Please do not organise your paperwork with bricks.”'},
   asic_drone:{name:'ASIC Audit Drone',emoji:'🛩',count:2,
     line:'Bureaucratic aerobics. Literal. Ally-shaped but suspicious.'},
   asic_chief:{name:'ASIC Chief Auditor',emoji:'🧾',boss:true,count:1,
@@ -730,8 +741,25 @@ const EVENTS=[
     d:'A purple envelope. Contents are unexplained. Counts for nothing; counts for everything.'}
 ];
 
-/* ---- ENDINGS (P5) ---- */
-const ENDINGS={
+/* ===TWEAK TABLE: event synergy payouts — per event id (the deck above),
+   paid on draw to whichever of these members are actually on the roster.
+   Design note: synergy pins from the board game; keep tiny. === */
+const EVENT_SYN={
+  bondmageddon:  {tan:{intel:2},    lane:{intel:1}},
+  oil:           {jason:{cash:20},  max:{cash:15}},
+  trump_tariffs: {kiran:{intel:1},  simring:{intel:2}},
+  ceo_photo:     {simring:{intel:2},max:{cash:10}},
+  rba_decision:  {butler:{cash:10}, swain:{intel:1}},
+  quikstop_robbery:{jason:{cort:1}, tan:{intel:1}},
+  davos:         {lucian:{cash:10}, max:{intel:1}},
+  tapes_missing: {swain:{intel:1},  lane:{intel:1}},
+  auction_flop:  {aidan:{cash:10},  lane:{intel:2}},
+  imf_letter:    {lucian:{cash:10}, butler:{intel:1}},
+  ibis_migration:{kiran:{cash:10},  jason:{intel:1}},
+  made_payout:   {butler:{intel:1}}
+};
+
+/* ---- ENDINGS (P5) ---- */const ENDINGS={
   second:{name:'The Second Accord',d:'Both mandates. Bullock nods. Yields exhale.'},
   truce:{name:'The Uneasy Truce',d:'One mandate, a joint press release shaped like a silent stalemate.'},
   iron:{name:'The Iron Ledger',d:'The spreadsheet balances. Doubters became headcounts.'},
@@ -969,10 +997,18 @@ SCENES['hub']={zone:()=> '— MARTIN PLACE HUB · PHASE '+G.phase+' · '+G.phase
 const SAVE_KEY='bcrpg_save_v1';
 let G=null;
 
-/* ===TWEAK TABLE: economy — P3's mood/event deck rewrites shopMult === */
+/* ===TWEAK TABLE: economy — the mood (CALM/BOOM/FRENZY/PANIC) drives prices,
+   intel sell rates and encounter difficulty. All knobs live in MOOD_MODS.=== */
+const MOOD_MODS={
+  CALM:  {shop:1.00, sell:2, enc:1.00, open:{}},                 /* neutral tape */
+  BOOM:  {shop:0.85, sell:2, enc:1.00, open:{cash:15}},          /* prices down, opening bonus cash */
+  FRENZY:{shop:1.10, sell:3, enc:1.10, open:{cort:1, intel:1}},  /* ten-percent swings; adrenaline */
+  PANIC: {shop:1.30, sell:4, enc:1.18, open:{intel:3}}           /* expensive, violent, finally intel-rich */
+};
 const ECON={
-  shopMult:()=>1,
-  sellRate:{CALM:2,BOOM:2,PANIC:4,FRENZY:3}
+  shopMult:()=> MOOD_MODS[G.mood].shop,
+  sellRate:()=> MOOD_MODS[G.mood].sell,
+  enc:()=> MOOD_MODS[G.mood].enc
 };
 /* ===TWEAK TABLE: rival rotation (first-eligible wins) === */
 const RIVAL_ORDER=['simring','max','tan','lucian'];
@@ -1027,6 +1063,7 @@ function deleteSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
 
 const F=k=> !!G.flags[k];
 function setF(k,v){ G.flags[k]=(v===undefined? true: v); }
+function hasF(k){ return !!G.flags[k]; }
 function log(x){ G.log.unshift(x); if(G.log.length>40) G.log.pop(); }
 
 /* — tiny WebAudio bleeps (P6 expands/selects) — */
@@ -1088,7 +1125,9 @@ function advanceMilestone(m,phase,phaseName,sub){
     (sub? '\n'+sub : '');
   renderHUD();
   openOv('mstone');
-  drawEventCard('milestone');   /* P3: the deck reacts to milestones */
+  /* P3 market deck: draws fire at milestones from M1 onward (the prologue
+     stays readable with CALM baseline; deck order is tweakable in TWEAK) */
+  if(m && m!=='M0') drawEventCard('milestone '+m);
 }
 /* ===TWEAK TABLE: milestone → zone unlocks === */
 function unlockZones(m,p){
@@ -1109,8 +1148,39 @@ const UNLOCK_BY_PHASE={
   4:['qantas_lounge','parliament','press_club','treasury'],
   5:['rba_vault']
 };
-/* ===P3 HOOK: the market deck reacts to milestones (no-op until P3 lands) === */
-function drawEventCard(reason){}
+/* ===P3: the market deck reacts to milestones and zone visits === */
+function drawEventCard(reason){
+  if(!G) return;
+  const ev=EVENTS[G.deckPos % EVENTS.length];
+  G.deckPos=(G.deckPos+1)%EVENTS.length;
+  const prevMood=G.mood;
+  G.mood=ev.mood;
+  log('EVENT: '+ev.name+' → mood '+G.mood+' ('+reason+')');
+  /* synergy payouts to whoever is on the roster */
+  const pays=[];
+  Object.entries(EVENT_SYN[ev.id]||{}).forEach(([id,fxy])=>{
+    if(G.party.includes(id)||G.bench.includes(id)){
+      applyEffects({cash:fxy.cash||0, intel:fxy.intel||0, cort:fxy.cort||0});
+      pays.push(CHARS[id].name+' pockets the synergy');
+    }
+  });
+  /* mood openings land at next battle; numbers shown on the card */
+  const m=MOOD_MODS[G.mood];
+  $('evName').textContent='📈 '+ev.name+' — '+G.mood;
+  $('evLine').textContent=ev.d;
+  $('evFx').innerHTML=
+    '· SHOP PRICES ×'+m.shop.toFixed(2)+
+    ' · SELL INTEL $'+m.sell+
+    ' · ENCOUNTERS ×'+m.enc.toFixed(2)+
+    (Object.keys(m.open).length? '<br>· battlefield openings: '+
+      Object.entries(m.open).map(([k,v])=>({cash:'+$'+v, intel:'+'+v+'🛈', cort:'+'+v+'🔥'}[k])+' '+k).join(', ')
+      : '')+
+    (pays.length? '<br>· synergy: '+pays.join(' · '):'');
+  log('MOOD '+prevMood+'→'+G.mood+' · shop×'+m.shop+' sell$'+m.sell);
+  beep('intel');
+  renderHUD(); save(true);
+  openOv('evov');
+}
 
 /* ============================================================
    [5] UI — screens, HUD, scene renderer
@@ -1563,7 +1633,8 @@ function mkPartyUnit(id){
 }
 function mkFoeUnit(eid,i,n){
   const g=ENEMIES[eid]||{}, s=ENEMY_STATS[eid]||{}, lv=Math.max(1,G.phase-1);
-  const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)) : base;
+  const bug=BF_BUG||1;   /* planted bug: foe ATK −25% for this battle */
+  const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)*ECON.enc()*bug) : base;
   return {
     side:'foe', eid, tag:(n>1? ' '+String.fromCharCode(65+i):''),
     name:(g.name||eid)+(n>1? String.fromCharCode(65+i):''),
@@ -1571,13 +1642,14 @@ function mkFoeUnit(eid,i,n){
     mp:s.mp||0, maxmp:s.mp||0, atk:sc(s.atk,s.atk||10), def:s.def||6, agi:s.agi||8,
     boss:!!g.boss, statuses:[], summoned:false
   };
+  /* note: bug hits HP too — a body-affecting wiretap. Cheap sabotage.
+     (If you'd rather only ATK bend, change sc() usage for hp to drop *bug.) */
 }
 
 /* --- the battle object --- */
 let BATTLE=null;
 function beginBattle(b, box){
-  ensurePartyStats();
-  const n=Math.min(Math.max((ENEMIES[b.id]&&(ENEMIES[b.id].count))||1,1),5);
+  ensurePartyStats();  const n=Math.min(Math.max((ENEMIES[b.id]&&(ENEMIES[b.id].count))||1,1),5);
   const foes=Array.from({length:n},(_,i)=>mkFoeUnit(b.id,i,n));
   const team=G.party.map(mkPartyUnit).filter(Boolean);
   BATTLE={
@@ -1585,6 +1657,8 @@ function beginBattle(b, box){
     rewards: b.reward||{}, reveal:false, summoned:0, box
   };
   BATTLE.q=[...team,...foes].sort((a,z)=>eff(z).agi-eff(a).agi);
+  if(BF_DOSSIER){ BATTLE.reveal=true; BF_DOSSIER=false; battleBeat('DOSSIER OPEN — statlines on record.'); }
+  if(MOOD_OPEN){ battleBeat(MOOD_OPEN); MOOD_OPEN=null; }
   /* cortisol pre-fight: Shaken start at threshold */
   if(G.cort>=CORT.shaken) team.forEach(u=>{ if(!u.down) addStatus(u,{k:'shaken', t:99, name:'SHAKEN'}); });
   renderBattle();
@@ -1874,6 +1948,7 @@ function upkeep(u){
 /* --- battle end --- */
 function endBattle(win){
   BATTLE.over=true; BATTLE.win=win;
+  BF_BUG=null; MOOD_OPEN=null;   /* per-battle intel effects expire with the fight */
   const box=BATTLE.box; if(box) box.innerHTML='';
   const w=document.createElement('div'); w.className='beat';
   if(win){
@@ -1902,10 +1977,11 @@ function endBattle(win){
     log('RETREAT: '+((ENEMIES[BATTLE.b.id]||{}).name||''));
   }
   const ok=document.createElement('button'); ok.textContent='CONTINUE';
+  const won=win;
   ok.onclick=()=>{
-    beep(win? 'coin':'bad'); renderHUD(); save(true);
-    if(R.onBattleDone){ const f=R.onBattleDone; R.onBattleDone=null; f(BATTLE.win); }
-    else if(win) advance();
+    beep(won? 'coin':'bad'); renderHUD(); save(true);
+    if(R.onBattleDone){ const f=R.onBattleDone; R.onBattleDone=null; f(won); }
+    else if(won) advance();
     else gotoScene('hub');
   };
   w.appendChild(ok);
@@ -1921,10 +1997,46 @@ function persistUnits(){
 }
 
 /* scene-block battle: real engine with scripted retreat fallback */
+let BF_BUG=null; /* per-battle foe ATK factor from a planted intel bug */
+let BF_DOSSIER=false;
+let MOOD_OPEN=null; /* P3: mood-opening line, spoken at battle start */
 function addBattleStub(b){
+  /* regulator raid: cortisol pegged at the ceiling → ASIC ambush first */
+  if(G.cort>=CORT.raid && !BATTLE && !R.raidPending){
+    log('REGULATOR RAID — cortisol at '+G.cort);
+    R.raidPending=b;
+    const raidB={t:'battle', id:'asic_raid', reward:{cash:0,intel:0,cort:0},
+      note:'Emergency ambush. The regulators keep receipts too.'};
+    const box=document.createElement('div'); box.className='beat';
+    box.style.border='1px solid var(--red)'; box.style.padding='10px'; box.style.margin='8px 0';
+    $('stage').appendChild(box);
+    R.onBattleDone=(raidWin)=>{
+      /* raid penalties: regardless of who won the skirmish, the state collects */
+      const loss=Math.round(G.cash*TUNING.raid.cash);
+      G.cash=Math.max(0,G.cash-loss);
+      G.cort=4;
+      toast('🧾 RAID SETTLED: −$'+loss+' · cortisol ventilated to 4','bad');
+      log('RAID settled: −$'+loss+', cort→4');
+      beep('bad'); renderHUD(); save(true);
+      R.onBattleDone=null;
+      addBattleStub(R.raidPending);
+      R.raidPending=null;
+    };
+    beginBattle(raidB, box);
+    return;
+  }
   const box=document.createElement('div'); box.className='beat';
   box.style.border='1px solid rgba(255,255,255,.15)'; box.style.padding='10px'; box.style.margin='8px 0';
   $('stage').appendChild(box);
+  /* intel ops consumption + mood openings land here */
+  if(hasF('bugNext')){ G.flags.bugNext=false; BF_BUG=0.75; }
+  if(hasF('dossierNext')){ G.flags.dossierNext=false; BF_DOSSIER=true; }
+  const open=MOOD_MODS[G.mood].open||{};
+  if(Object.keys(open).length){
+    applyEffects({cash:open.cash||0, intel:open.intel||0, cort:open.cort||0});
+    MOOD_OPEN='MARKET '+G.mood+' OPEN: '+
+      Object.entries(open).map(([k,v])=>({cash:'+$'+v, intel:'+'+v+'🛈', cort:'+'+v+'🔥'}[k])+' '+k).join(', ');
+  }
   beginBattle(b, box);
 }
 /* scripted battle runner (dev/harness): acts[] may use 'attack' (target auto:
@@ -2120,25 +2232,59 @@ function openStub(key){
     }
   } else if(key==='ops'){
     t.textContent='INTEL OPS'; sub.textContent='Information is the second currency. The first is cash. The third is being believed.';
-    bd.innerHTML=
-      '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted rgba(255,255,255,.1)">'+
-      '<span>· SELL INTEL — flush intel to cash at mood rates</span><span style="color:var(--gold)">'+
-      '$'+ECON.sellRate[G.mood]+' now</span></div>'+
-      '<button id="sellOne" style="margin-top:10px">SELL 1 🛈</button>'+
-      '<div class="sub" style="margin-top:14px">'+
-      '· PEEK NEXT EVENT (2🛈) — comes with the market deck, P3<br>'+
-      '· THE DOSSIER (3🛈) — reveal enemy statlines, P2<br>'+
-      '· PLANT BUG (2🛈) — pre-battle debuffs, P2<br>'+
-      '· BURN A FAVOR (1🛈) — hub favours, P3<br>'+
-      '· BLACK-MARKET GEAR — prices move with the mood, P3</div>';
-    const sb=bd.querySelector('#sellOne');
+    bd.innerHTML='';
+    const row=(label,btnlabel,cost,fn,note)=>{
+      const r=document.createElement('div');
+      r.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
+        'padding:6px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
+      r.innerHTML='<span>'+label+(note?' <span style="color:var(--dim)">'+note+'</span>':'')+'</span>';
+      const b=document.createElement('button'); b.textContent=btnlabel+' ('+cost+'🛈)';
+      b.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
+      b.onclick=()=>{
+        if(G.intel<cost){ toast('NOT ENOUGH INTEL (need '+cost+')','bad'); beep('bad'); return; }
+        G.intel-=cost; fn(); beep('coin');
+        toast('🛈 −'+cost,''); renderHUD(); save(true); openStub('ops');
+      };
+      r.appendChild(b); bd.appendChild(r);
+    };
+    /* sell intel */
+    const srow=document.createElement('div');
+    srow.style.cssText='display:flex;justify-content:space-between;padding:6px 0;'+
+      'border-bottom:1px dotted rgba(255,255,255,.1)';
+    srow.innerHTML='<span>· SELL INTEL — flush intel to cash at mood rates</span>'+
+      '<span style="color:var(--gold)">$'+ECON.sellRate()+' now</span>';
+    bd.appendChild(srow);
+    const sb=document.createElement('button'); sb.textContent='SELL 1 🛈';
+    sb.style.cssText='margin:10px 0;padding:2px 10px;font-size:12px';
     sb.onclick=()=>{
       if(G.intel<1){ toast('NO INTEL LEFT TO SELL','bad'); beep('bad'); return; }
-      const rate=ECON.sellRate[G.mood]||2;
+      const rate=ECON.sellRate()||2;
       G.intel--; G.cash+=rate;
       toast('🛈 −1 → 💰 +$'+rate,''); beep('coin');
       renderHUD(); save(true); openStub('ops');
     };
+    bd.appendChild(sb);
+    row('· PEEK NEXT EVENT','PEEK',2,()=>{
+      const ev=EVENTS[G.deckPos % EVENTS.length];
+      toast('UPCOMING: '+ev.name+' → '+ev.mood,'intel');
+      setF('peeked_'+ev.name, true);
+    },'the deck updates at milestones');
+    row('· PLANT A BUG','BUG',2,()=>{
+      setF('bugNext',true); setF('bugPlayed',0);
+      toast('BUG planted — foe ATK −25% next battle','intel');
+    },'one ambush\'s worth of bad wiring');
+    row('· THE DOSSIER','DOSSIER',3,()=>{
+      setF('dossierNext',true);
+      toast('Dossier locked — statlines revealed next battle','intel');
+    },'know thine enemy statline');
+    row('· BURN A FAVOR','FAVOR',1,()=>{
+      G.cash+=25;
+      toast('💰 +$25 — a favor, repaid in rand','intel');
+    },'no questions, just cash');
+    const later=document.createElement('div');
+    later.className='sub'; later.style.marginTop='14px';
+    later.textContent='· BLACK-MARKET GEAR — prices move with the mood; stock arrives later.';
+    bd.appendChild(later);
   } else if(key==='backrooms'){
     t.textContent='THE BACKROOMS'; sub.textContent='Travel to The Backrooms from the ZONES panel for the purple door. This panel hums in sympathy.';
     bd.innerHTML='<div class="sub">The door remembers every visit across the whole game. Three visits across the run, and something will be acknowledged. No refunds.</div>';
@@ -2150,6 +2296,7 @@ function openStub(key){
 
 /* — ESC + keyboard — */
 $('stClose').onclick=()=>{ closeOv('stov'); renderHUD(); save(true); };
+$('evOk').onclick=()=>{ closeOv('evov'); save(true); };
 $('mstoneOk').onclick=()=>{
   closeOv('mstone'); save(true);
   if(R.scene==='m0_exit') gotoScene('hub');
@@ -2157,6 +2304,7 @@ $('mstoneOk').onclick=()=>{
 
 document.addEventListener('keydown',ev=>{
   if($('stov').classList.contains('on')){ if(ev.key==='Escape'){ $('stClose').click(); } return; }
+  if($('evov').classList.contains('on')){ if(ev.key==='Escape'){ $('evOk').click(); } return; }
   if($('mstone').classList.contains('on')||$('selov').classList.contains('on')){
     if(ev.key==='Escape'){ $('selCancel').click(); }
     return;
@@ -2261,7 +2409,12 @@ window.BCRPG={
   mute:()=>{ $('btnMute').click(); },
   /* P2 battle API: ids, 'enemyId', script — attacks/skills/defend */
   testBattle,
-  TUNING, SKILL_FX, STATBASE, ENEMY_STATS, ENEMY_AI
+  TUNING, SKILL_FX, STATBASE, ENEMY_STATS, ENEMY_AI,
+  /* P3 market APIs */
+  EVENTS, MOOD_MODS, ECON, drawEventCard,
+  setMood:m=>{ G.mood=m; renderHUD(); save(true); },
+  /* live battle introspection (tests) */
+  battle:()=>BATTLE
 };
 /* old-save migration: seed missing P2 fields without touching v:1 shape */
 const _origContinue=continueGame;
