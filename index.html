@@ -447,6 +447,16 @@ const SKILLS={
 const ENEMIES={
   b4_guard:{name:'Big Four Suit Security',emoji:'🕴',count:3,
     line:'“Do you have an appointment, or an umbrella? Either counts. Only one protects.”'},
+  b4_chief:{name:'BIG FOUR SECURITY CHIEF',emoji:'🕴',boss:true,count:1,
+    line:'“Nineteen years in lifts. Nobody out-negotiates the parking policy.”'},
+  rival_sim:{name:'THE FIRST RIVAL — SIMRING',emoji:'📺',boss:true,count:1,
+    line:'“Take notes. This is the part you’ll be asked about.”'},
+  rival_max:{name:'THE FIRST RIVAL — MAX',emoji:'💰',boss:true,count:1,
+    line:'“I brought leverage and a hoodie. Guess which one is the weapon.”'},
+  rival_tan:{name:'THE FIRST RIVAL — TAN',emoji:'⚡',boss:true,count:1,
+    line:'“Position’s open. So is the exit. Timing is everything.”'},
+  rival_lucian:{name:'THE FIRST RIVAL — LUCIAN',emoji:'🍽',boss:true,count:1,
+    line:'“Lunch is enemies, or so I’ve financed.”'},
   asic_drone:{name:'ASIC Audit Drone',emoji:'🛩',count:2,
     line:'Bureaucratic aerobics. Literal. Ally-shaped but suspicious.'},
   asic_chief:{name:'ASIC Chief Auditor',emoji:'🧾',boss:true,count:1,
@@ -500,7 +510,7 @@ const ZONES={
   hedge_fund:{name:'The Hedge Fund Floor',act:1,d:'Sit still; watch your lunch get priced.'},
   quickstop:{name:'Quikstop',act:1,d:'The servo. Here, have a fact.'},
   backrooms:{name:'The Backrooms',act:1,d:'Monitors, brown paint, one purple door.'},
-  terminal:{name:'The Terminal',act:1,d:'Forecasts for cash. Weather costs extra.'},
+  the_terminal:{name:'The Terminal',act:1,d:'Forecasts for cash. Weather costs extra.'},
   newsroom:{name:'The Newsroom',act:1,d:'Reading the future after it became past.'},
   coal_pent:{name:'Coal Corp Penthouse',act:1,optional:true,d:'Elevator cards discriminate against non-money.'},
   qantas_lounge:{name:'Qantas Lounge',act:2,d:'Fly north. Freshly squeezed.'},
@@ -598,28 +608,177 @@ SCENES['m0_exit']={zone:'— BACKSTAGE CORRIDOR · 5:51PM —',blocks:[
     text:'Gold Coins, servo meals, or my tea keep the number down. Rule two: never rule anything out on a Friday. Rule three: in the Backrooms there is a purple door. It will not explain itself. Not once. Not ever.'},
   {t:'say', who:'THE BUTLER', pid:'butler',
     text:'There are nine others from that competition. Six will join you by story. Two may instead become rivals — the Hedge Fund crown and the newsroom orbit make their own appointments. One keeps the last for an arrangement of purple.'},
+  {t:'joinif', who:'butler', alt:'swain',
+    say:'“I join. The rota begins. Breakfast is at six; the bond market has no manners.”',
+    altSay:'“Evidently I am the most organised thing in this corridor. Rota accepted. The tea, tragically, is on me to source.”'},
   {t:'mile', id:'M0', phase:2, phaseName:'VIGILANTES CIRCLE',
     sub:'The Inquiry exists. You exist. The vigilantes have been notified.'}
 ], next:()=> 'hub'};
 
-/* — MARTIN PLACE HUB (P1 fleshes this out; options loop for now) — */
-SCENES['hub']={zone:'— MARTIN PLACE HUB —',blocks:[
+/* — M1: the Big Four Tower lobby (skirmish-resolved until P2 wires the
+   real turn engine onto the same battle blocks) — */
+SCENES['m1_lobby']={zone:'— BIG FOUR TOWER LOBBY · MARBLE EVERYWHERE —',blocks:[
+  {t:'k', x:'M1 · FORM THE FACTION'},
+  {t:'say', who:'BIG FOUR SUIT SECURITY', text:'“Do you have an appointment, or an umbrella? Either counts. Only one protects.”', silh:true},
+  {t:'battle', id:'b4_guard', reward:{cash:25, intel:2, cort:1},
+    note:'Three suits. Nice ties, worse odds for them.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Note the discipline on that retreat. You have located his courage; it was in his tie.'},
+  {t:'say', who:'SECURITY CHIEF (DOWN THE STAIRS)', text:'“MRS BULLOCK FAXED THIS MORNING. WORD OF THE COMPETITION HAS SPREAD. YOU ARE NOW AN INCIDENT.”', silh:true},
+  {t:'battle', id:'b4_chief', reward:{cash:60, intel:4, cort:1},
+    note:'Incident management begins in its natural habitat.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The lobby is ours, as a legal courtesy. The tower remains aspirational. Word of your affiliation has prerequisites now, so choose your first ally while the lifts are compromised.'},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran'],
+    prompt:'The lifts chime. Four colleagues loiter with intent:',
+    say:'“So this is where the revolution keeps its stapler.”'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The faction exists. The bond market has been notified and has not yet reacted. That is never a good sign.'},
+  {t:'mile', id:'M1', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'Faction formed. Side lines are opening: a newsroom wants noise, a servo wants custom, and someone is rehearsing their rival arc in the reflection of the lift doors.'}
+], next:()=> 'hub'};
+
+/* — M2: Follow the Money — */
+SCENES['m2_infilt']={zone:'— BIG FOUR TOWER · FLOOR 31 · AFTER HOURS —',blocks:[
+  {t:'k', x:'M2 · FOLLOW THE MONEY'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The Shadow Board is a rumour with a chair. We are on its floor now. Floor 31 has no signage — the signage was fired.'},
+  {t:'choice', prompt:'How do you work the floor?',
+    options:[
+      {x:'Plant bugs on the boardroom landline.', set:'recon_bug', note:'Lane would be proud. Whoever Lane is.'},
+      {x:'Walk in the front door like you pay rates here.', set:'recon_front', note:'Suit-based infiltration. Oddly effective in this town.'}
+    ]},
+  {t:'say', who:'MEETING ROOM TV (STILL ON)', text:'A SLIDE, HALF-VISIBLE: “SHADOW BOARD — STAGE 2 — MANDATORY HUMILITY FOR OSTENSIBLE TREASURERS.” THE WIFI FORGOT TO LOG OUT.'},
+  {t:'say', who:'THE SHADOW BOARD (IN SUMMARY)', text:'They exist to keep both mandates broken so the fees keep flowing. Your existence is a spreadsheet error by their reckoning.', silh:true},
+  {t:'battle', id:'hedge_algo', reward:{cash:35, intel:3, cort:1},
+    note:'Floor-31 security are not people. Nobody says otherwise out loud.'},
+  {t:'say', who:'THE FIRST RIVAL', text:'“You found the board. Cute. I found the board MONTHS ago — I stayed, and I got a chair. You can be recruited by me, or featured on me. Choose by bedtime.”'},
+  {t:'choice', prompt:'The rival extends a chair.',
+    options:[
+      {x:'“Pull up a chair. The faction has room.”', goto:'m2_join', note:'Rival for now; roster for always.'},
+      {x:'“Feature me. Get it over with.”', goto:'m2_rivalboss', note:'Boss fight now; roster reclaimed later.'}
+    ]},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Two futures for one colleague. Whatever happened tonight, the files were copied. The Shadow Board is exposed either way.'},
+  {t:'mile', id:'M2', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Shadow Board is exposed and one rival has decided what they are to you. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
+], next:()=> 'hub'};
+
+SCENES['m2_join']={zone:'— FLOOR 31 · THE CHAIR THAT WAS OFFERED —',blocks:[
+  {t:'joinrival'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'They joined. Rivalry deferred to rota. The tea was already warm, which is how you know.'},
+  {t:'battle', id:'spin_unit', reward:{cash:30, intel:4, cort:1},
+    note:'Their old team came to collect them. Your new ally declined the away game.'},
+  {t:'say', who:'THE NEW ALLY', text:'“Fire everyone. Including me later, probably. Right now: fire them.”'},
+  {t:'mile', id:'M2', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Shadow Board is exposed and the rival of record chose sides. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
+], next:()=> 'hub'};
+
+SCENES['m2_rivalboss']={zone:'— FLOOR 31 · THE CHAIR THAT WAS TAKEN —',blocks:[
+  {t:'battle', id:'rivalFirst', reward:{cash:90, intel:8, cort:2},
+    note:'The rival brings their whole ecosystem. They also bring a merch table.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'They lost gracefully at volume, which is a tell. Expect round two with an actual mandate on the line.'},
+  {t:'mile', id:'M2', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Shadow Board is exposed and the rival of record chose ill. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
+], next:()=> 'hub'};
+
+/* — M3 teaser: content lands in P4 — */
+SCENES['m3_teaser']={zone:'— QANTAS LOUNGE · DEPARTURES —',blocks:[
+  {t:'k', x:'M3 · FLY NORTH (P4 CONTENT ARROWS HERE)'},
+  {t:'say', who:'QANTAS DESK', text:'“Your booking is confirmed, pending complicated compensation.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Canberra waits. Parliament opens, Treasury burrows, and the airfare is a deduction from something. Tonight the city keeps a hum: the newsroom tip, the penthouse ledger, the deep Backrooms. Take them or leave them.'},
+  {t:'say', who:'BOARD (ELECTRONIC, SLOW TO UPDATE)', text:'CANBERRA: DELAYED. REASON: FAIR.', silh:true}
+], next:()=> 'hub'};
+
+/* — zone vignettes: travel targets (visit via the ZONES panel) — */
+SCENES['zs_quickstop']={zone:'— QUIKSTOP · THE SERVO —',blocks:[
+  {t:'k', x:'QUIKSTOP'},
+  {t:'say', who:'SERVO ATTENDANT', text:'“Rates went up so the pie went up. Chain of economic consequence. $4.20.”', silh:true},
+  {t:'panel', panel:'shop'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Fine milk display, questionable news rack. Never buy a generator from a man whose logo is a hot meal.'}
+], next:()=> 'hub'};
+
+SCENES['zs_b4']={zone:'— BIG FOUR TOWER · LOBBY REVISIT —',blocks:[
+  {t:'k', x:'BIG FOUR TOWER'},
+  {t:'say', who:'REPLACEMENT SUIT SECURITY', text:'“Standing orders: comply loudly, resist quietly. Also, welcome back!”'},
+  {t:'battle', id:'b4_guard', reward:{cash:25, intel:2, cort:1},
+    note:'Lobby skirmishes replenish; cortisol keeps score.'}
+], next:()=> 'hub'};
+
+SCENES['zs_terminal']={zone:'— THE TERMINAL —',blocks:[
+  {t:'k', x:'THE TERMINAL'},
+  {t:'say', who:'TERMINAL GUY', text:'“Forecasts for cash. Weather extra. I sell certainty and doubt, packaged as one.”', silh:true},
+  {t:'get', intel:2, once:'terminal_used', note:'The tape was readable today.'},
+  {t:'flagOnce', set:'terminal_used', note:'THE TAPE'}
+], next:()=> 'hub'};
+
+SCENES['zs_newsroom']={zone:'— THE NEWSROOM —',blocks:[
+  {t:'k', x:'THE NEWSROOM'},
+  {t:'say', who:'SIMRING (FROM ACROSS THE ROOM)', pid:'simring',
+    text:'“Your scandal isn’t out yet. I know, because I checked. Twice. For work.”'},
+  {t:'say', who:'SIMRING', pid:'simring',
+    text:'The trick isn’t leaking — anyone can leak. The trick is deciding WHAT WAS LEAKED, then reporting on it yourself in the third person. Watch: “sources say”.'},
+  {t:'get', intel:2, once:'newsroom_used', note:'A tip that was half-you, half-the-universe.'},
+  {t:'flagOnce', set:'newsroom_used', note:'ROOM COVER'}
+], next:()=> 'hub'};
+
+SCENES['zs_hedge']={zone:'— THE HEDGE FUND FLOOR —',blocks:[
+  {t:'k', x:'THE HEDGE FUND FLOOR'},
+  {t:'say', who:'HEDGE FUNDER (WHITEBOARD AT A CERTAIN ANGLE)', text:'“We are long on you, short on everything else, and flat on ethics. It’s a market-based approach.”', silh:true},
+  {t:'get', cash:10, once:'hedge_used', note:'A “finder’s fee” for existing interestingly.'},
+  {t:'flagOnce', set:'hedge_used', note:'FINDER FEE'}
+], next:()=> 'hub'};
+
+SCENES['zs_backrooms']={zone:'— THE BACKROOMS —',blocks:[
+  {t:'k', x:'THE BACKROOMS'},
+  {t:'say', who:'MONITOR GLOW', text:'Fluorescent hum. Filing cabinets the size of dumpling steamers. A purple door with no signage and perfectly smooth hinges.', silh:true},
+  {t:'made'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Rule three still applies. I have served seven Treasurers and none of them had hinges that smooth.'}
+], next:()=> 'hub'};
+
+SCENES['zs_coalpent']={zone:'— COAL CORP PENTHOUSE —',blocks:[
+  {t:'k', x:'COAL CORP PENTHOUSE (OPTIONAL · COMING P5)'},
+  {t:'say', who:'LOBBY CARD-READER', text:'“FLOOR 4B: AUTHORISED ACCESS ONLY. HAVE A PROSPEROUS SHIFT.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The penthouse boss is a later chapter’s content — optional, with ACCC side-eye included. The floor can wait; it is coal, it is used to waiting.'}
+], next:()=> 'hub'};
+
+SCENES['zs_parliament']={zone:'— PARLIAMENT HOUSE —',blocks:[
+  {t:'k', x:'PARLIAMENT HOUSE (P4)'},
+  {t:'say', who:'DOOR SECURITY', text:'“Tour group? Media? Defendant? Pick one, the forms all work.”', silh:true}
+], next:()=> 'hub'};
+
+SCENES['zs_pressclub']={zone:'— THE PRESS CLUB —',blocks:[
+  {t:'k', x:'THE PRESS CLUB (P4 · OPTIONAL)'},
+  {t:'say', who:'WAITER', text:'“Table for two? Or are you eating with your press release again?”', silh:true}
+], next:()=> 'hub'};
+
+SCENES['zs_treasury']={zone:'— TREASURY · BASEMENT LEVEL —',blocks:[
+  {t:'k', x:'TREASURY — BASEMENT LEVEL (P4 · FISCAL BOSS)'},
+  {t:'say', who:'FLUORESCENT HUM', text:'“Welcome to the fiscal dungeon. Filing hours apply.”', silh:true}
+], next:()=> 'hub'};
+
+SCENES['zs_qantas']={zone:'— QANTAS LOUNGE —',blocks:[
+  {t:'k', x:'QANTAS LOUNGE (P4)'},
+  {t:'say', who:'STAFF', text:'“We currently have milk and a waitlist. Same as Treasury.”', silh:true}
+], next:()=> 'hub'};
+
+SCENES['zs_rba']={zone:'— RBA BOARDROOM VAULT —',blocks:[
+  {t:'k', x:'RBA BOARDROOM VAULT (P5 · FINALE)'},
+  {t:'say', who:'THE DOOR ITSELF', text:'“The Governor sees everyone eventually. Sometimes the room does it for her.”', silh:true}
+], next:()=> 'hub'};
+
+/* hub: shared room between chapters; menu built dynamically (see buildHubOptions) */
+SCENES['hub']={zone:()=> '— MARTIN PLACE HUB · PHASE '+G.phase+' · '+G.phaseName+' —',blocks:[
   {t:'k', x:()=>'MARTIN PLACE · PHASE '+G.phase+' · '+G.phaseName},
   {t:'say', who:'THE BUTLER', pid:'butler',
     text:'The hub. Bench swaps at hubs, intel ops, the servo. The city re-ratchets each milestone: shops get costlier, intel gets pricier, encounters get worse. Clockwork.'},
   {t:'loop'}
-], next:()=> 'hub'};
-
-/* — M1 placeholder (real chain lands in P1: Security Chief, first recruits) — */
-SCENES['m1_tower']={zone:'— BIG FOUR TOWER LOBBY —',blocks:[
-  {t:'k', x:'M1 · FORM THE FACTION — P1 CONTENT BEGINS HERE'},
-  {t:'say', who:'BIG FOUR SUIT SECURITY', text:'“Do you have an appointment, or an umbrella? Either counts. Only one protects.”', silh:true},
-  {t:'battle', id:'b4_guard', reward:{cash:25, intel:2, cort:1},
-    note:'P0 stub battle — the full turn engine, HP/MP/AGI, statuses and boss scripts land in P2.'},
-  {t:'say', who:'THE BUTLER', pid:'butler',
-    text:'The lobby is clear as a legal courtesy. The tower remains aspirational. Recruits, the shop, and this chapter’s real milestone arrive with the Phase 1 build.'},
-  {t:'mile', id:'M1', phase:2, phaseName:'VIGILANTES CIRCLE',
-    sub:'Stub milestone. P1 rewires this chain properly: Big Four lobby boss, first two recruits, side quests.'}
 ], next:()=> 'hub'};
 
 /* ============================================================
@@ -627,6 +786,22 @@ SCENES['m1_tower']={zone:'— BIG FOUR TOWER LOBBY —',blocks:[
    ============================================================ */
 const SAVE_KEY='bcrpg_save_v1';
 let G=null;
+
+/* ===TWEAK TABLE: economy — P3's mood/event deck rewrites shopMult === */
+const ECON={
+  shopMult:()=>1,
+  sellRate:{CALM:2,BOOM:2,PANIC:4,FRENZY:3}
+};
+/* ===TWEAK TABLE: rival rotation (first-eligible wins) === */
+const RIVAL_ORDER=['simring','max','tan','lucian'];
+/* ===TWEAK TABLE: zone travel targets === */
+const ZSCENES={
+  martin_hub:'hub', quickstop:'zs_quickstop', b4_tower:'zs_b4',
+  hedge_fund:'zs_hedge', backrooms:'zs_backrooms', the_terminal:'zs_terminal',
+  newsroom:'zs_newsroom', coal_pent:'zs_coalpent', qantas_lounge:'zs_qantas',
+  parliament:'zs_parliament', press_club:'zs_pressclub',
+  treasury:'zs_treasury', rba_vault:'zs_rba'
+};
 
 function freshState(pcid){
   return {
@@ -640,6 +815,8 @@ function freshState(pcid){
     zones:{unlocked:['martin_hub','quickstop'], visited:[]},
     party: pcid? [pcid] : [],
     bench:[],
+    items:{},
+    upgrades:{},   /* P3: bug pinned, dossier pinned etc. */
     mood:'CALM',
     deckPos:0,
     scene:null, block:0,
@@ -719,7 +896,7 @@ function applyEffects(e){
 function advanceMilestone(m,phase,phaseName,sub){
   G.phase=phase; G.phaseName=phaseName;
   if(m && G.mile[m]!==undefined) G.mile[m]=true;
-  unlockZones(phase);
+  unlockZones(m,phase);
   log('MILESTONE '+m+' → '+phaseName);
   beep('bad');
   $('mstoneBig').textContent=(m||'M?')+' — CRISIS ADVANCES';
@@ -728,14 +905,29 @@ function advanceMilestone(m,phase,phaseName,sub){
     (sub? '\n'+sub : '');
   renderHUD();
   openOv('mstone');
+  drawEventCard('milestone');   /* P3: the deck reacts to milestones */
 }
-function unlockZones(p){
-  const map={2:['b4_tower','hedge_fund','the_terminal','newsroom'],
-             3:['backrooms','coal_pent'],
-             4:['qantas_lounge','parliament','press_club','treasury'],
-             5:['rba_vault']};
-  (map[p]||[]).forEach(z=>{ if(!G.zones.unlocked.includes(z)) G.zones.unlocked.push(z); });
+/* ===TWEAK TABLE: milestone → zone unlocks === */
+function unlockZones(m,p){
+  const map={
+    M1:['b4_tower','hedge_fund','the_terminal','newsroom'],
+    M2:['backrooms','coal_pent'],
+    M3:['parliament','press_club','treasury'],
+    M4:['qantas_lounge'],   /* fly north with the fiscal mandate in hand */
+    M5:['rba_vault']
+  };
+  (map[m]||UNLOCK_BY_PHASE[p]||[]).forEach(z=>{
+    if(!G.zones.unlocked.includes(z)) G.zones.unlocked.push(z);
+  });
 }
+const UNLOCK_BY_PHASE={
+  2:['b4_tower','hedge_fund','the_terminal','newsroom'],
+  3:['backrooms','coal_pent'],
+  4:['qantas_lounge','parliament','press_club','treasury'],
+  5:['rba_vault']
+};
+/* ===P3 HOOK: the market deck reacts to milestones (no-op until P3 lands) === */
+function drawEventCard(reason){}
 
 /* ============================================================
    [5] UI — screens, HUD, scene renderer
@@ -828,9 +1020,10 @@ function renderOps(){
     const un=G.zones.unlocked.includes(zk);
     const btn=document.createElement('button');
     btn.className='zonebtn'; btn.disabled=!un;
+    btn.setAttribute('data-zk',zk);
     btn.innerHTML=z.name+(un? '': ' <span class="lock">🔒</span>');
     btn.title=z.d;
-    if(un) btn.onclick=()=>{ beep('tick'); tourStub(z); };
+    if(un) btn.onclick=()=>{ beep('tick'); visitZone(zk); };
     else btn.onclick=()=>{ toast('LOCKED — arrives with a later phase','bad'); };
     o.appendChild(btn);
   });
@@ -849,8 +1042,17 @@ function renderOps(){
   });
 }
 
-function tourStub(z){
-  toast(z.name+' — opens with the Phase 1 build','intel'); beep('intel');
+function visitZone(zk){
+  const scene=ZSCENES[zk];
+  if(!scene){
+    toast(ZONES[zk].name+' — arrives with a later phase','intel'); beep('intel'); return;
+  }
+  if(!G.zones.visited.includes(zk)){
+    log('FIRST VISIT: '+ZONES[zk].name);
+    if(!G.zones.unlocked.includes(zk)) G.zones.unlocked.push(zk);
+  }
+  if(!G.zones.visited.includes(zk)) G.zones.visited.push(zk);
+  gotoScene(scene);
 }
 
 /* — scene runner — */
@@ -884,6 +1086,29 @@ function advance(i){
   runBlock();
 }
 
+/* rivals: first eligible not-PC, not-in-roster face */
+function rivalFirst(){
+  for(const id of RIVAL_ORDER){
+    if(id!==G.pc && !G.party.includes(id) && !G.bench.includes(id)) return id;
+  }
+  return RIVAL_ORDER[RIVAL_ORDER.length-1];
+}
+
+/* hub menu — story hooks are milestone-driven, side content always present */
+function buildHubOptions(){
+  const o=[
+    {x:'Quikstop — the servo (shop)', panel:'shop'},
+    {x:'Bench swap', panel:'swap'},
+    {x:'Intel ops (sell intel works)', panel:'ops'},
+    {x:'The Backrooms — purple door', panel:'backrooms'}
+  ];
+  if(!G.mile.M1)       o.push({x:'Continue story → The Big Four Tower lobby', goto:'m1_lobby'});
+  else if(!G.mile.M2)  o.push({x:'Continue story → Follow the Money (Shadow Board)', goto:'m2_infilt'});
+  else if(!G.mile.M3)  o.push({x:'Continue story → Fly North, Canberra', goto:'m3_teaser'});
+  else                 o.push({x:'Nothing to continue — the world exhales', toast:'ALL CHAPTERS CAUGHT UP'});
+  return o;
+}
+
 function runBlock(){
   const sc=SCENES[R.scene]; if(!sc) return;
   if(R.bi>=sc.blocks.length){ endOfScene(sc); return; }
@@ -892,6 +1117,9 @@ function runBlock(){
     case 'k':     addKicker(typeof b.x==='function'? b.x(): b.x); advance(); return;
     case 'flag':  if(b.set) setF(b.set,b.val);
                   if(b.note) toast('⚑ '+b.note); advance(); return;
+    case 'flagOnce': if(b.set && !F(b.set)){ setF(b.set,b.val); if(b.note) toast('⚑ first: '+b.note,''); }
+                     else if(b.note) toast('⚑ '+b.note+' (already logged)','');
+                     advance(); return;
     case 'mile':  advance(); advanceMilestone(b.id,b.phase,b.phaseName,b.sub); return;
     default:      renderVisible(b); return;
   }
@@ -904,9 +1132,12 @@ function renderVisible(b){
     addDialogue(b); save(true); return;
   }
   if(b.t==='get'){
+    if(b.once && F(b.once)){ /* once-per-world bonus already banked */
+      addDialogue({who:'MARGIN NOTES', text:'· '+b.note+ ' (already banked for this world-state)'});
+      return;
+    }
     const any=applyEffects(b);
     if(b.note) addDialogue({who:'MARGIN NOTES', text:'· '+b.note});
-    if(!b.note && any){ /* toast alone is enough */ }
     const cont=()=>advance();
     if(any && !b.note){ setTimeout(cont, 420); } else cont();
     return;
@@ -916,21 +1147,76 @@ function renderVisible(b){
     if(b.say) addDialogue({who:CHARS[b.id].name, pid:b.id, text:b.say});
     return;
   }
+  if(b.t==='joinif'){
+    const id=(G.pc===b.who)? b.alt : b.who;
+    joinChar(id);
+    addDialogue({who:CHARS[id].name, pid:id,
+      text: id===b.alt? b.altSay : (b.say||'“At your service. I have cleared my evenings indefinitely.”')});
+    return;
+  }
+  if(b.t==='allyChoice'){ addAllyChoice(b); save(true); return; }
+  if(b.t==='joinrival'){
+    const id=rivalFirst();
+    joinChar(id);
+    addDialogue({who:CHARS[id].name, pid:id,
+      text:'“Consider me a colleague with ambitious paperwork.”'});
+    advance();
+    return;
+  }
   if(b.t==='choice'){ addChoice(b); save(true); return; }
-  if(b.t==='battle'){ addBattleStub(b); save(true); return; }
-  if(b.t==='panel'){ openStub(b.panel); return; }
+  if(b.t==='battle'){
+    const bb=(b.id==='rivalFirst')? {...b, id:rivalFirst()}: b;
+    addBattleStub(bb); save(true); return;
+  }
+  if(b.t==='panel'){ openStub(b.panel); advance(); return; }
+  if(b.t==='made'){
+    const w=document.createElement('div'); w.className='beat';
+    const n=(G.flags.madeVisits||0)+1; G.flags.madeVisits=n;
+    const lines=[
+      'The purple door has no signage and perfectly smooth hinges. You open it. Behind it: a short hallway.',
+      'The hallway ends at a second purple door. It is warmer, and you do not remember walking.',
+      'The third door opens onto the first hallway. Somewhere a sticker quietly acknowledges you.'
+    ];
+    w.innerHTML='<div style="color:#b18cff;max-width:560px;margin:0 auto;padding:10px 0">'+
+      lines[Math.min(n-1,2)]+'</div>';
+    if(n<3) w.insertAdjacentHTML('beforeend',
+      '<div class="activity" style="text-align:center;color:var(--dim)">PURPLE DOOR · '+(3-n)+' VISIT'+(3-n===1?'':'S')+' REMAIN</div>');
+    else toast('🟣 A SECRET WAS ACKNOWLEDGED','intel');
+    log('MADE: purple door visit #'+n);
+    const ok=document.createElement('button'); ok.textContent='CLOSE THE DOOR';
+    ok.onclick=()=>{ beep('intel'); advance(); };
+    w.appendChild(ok);
+    st.appendChild(w); st.scrollTop=st.scrollHeight;
+    return;
+  }
   if(b.t==='loop'){
-    addChoice({prompt:'What next?',
-      options:[
-        {x:'Quikstop — shop (stub for P1)', panel:'shop'},
-        {x:'Bench swap (stub for P1)', panel:'swap'},
-        {x:'Intel ops (stub; sell intel works)', panel:'ops'},
-        {x:'The Backrooms — purple door (stub)', panel:'backrooms'},
-        {x:'Continue story → Big Four Tower', goto:'m1_tower'}
-      ]});
+    addChoice({prompt:'What next?', options:buildHubOptions()});
     return;
   }
   advance(); /* unknown type: skip forward */
+}
+
+/* recruit choice: pool minus PC and existing roster */
+function addAllyChoice(b){
+  const pool=(b.pool||[]).filter(id=> id!==G.pc && !G.party.includes(id) && !G.bench.includes(id));
+  const st=$('stage');
+  retireBeats();
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+b.prompt;
+  w.appendChild(pr);
+  pool.forEach((id,i)=>{
+    const c=CHARS[id];
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">'+(i+1)+'.</span> <span style="color:'+c.color+'">'+c.name+
+      '</span> — '+c.style+'<small>'+c.blurb+' ◆ '+(c.sig||[]).join(' · ')+'</small>';
+    btn.onclick=()=>{
+      beep('coin'); w.remove();
+      joinChar(id);
+      if(b.say) addDialogue({who:c.name, pid:id, text:b.say});
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
 }
 
 function endOfScene(sc){
@@ -1047,52 +1333,103 @@ function addBattleStub(b){
 function openStub(key){
   const t=$('stTitle'), sub=$('stSub'), bd=$('stBody');
   if(key==='shop'){
-    t.textContent='QUIKSTOP'; sub.textContent='The servo. Cash only; crises exempt.';
-    bd.innerHTML=Object.values(ITEMS).map(i=>
-      '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted rgba(255,255,255,.1)">'+
-      '<span>'+(i.emoji||'')+' '+i.name+'</span><span class="sub" style="color:var(--gold)">'+i.cost+
-      '<span style="color:var(--dim)"> · '+(G? '$'+G.cash:'')+' held · stocked P1</span></span></div>'+
-      '<div style="color:var(--dim);font-size:12px;padding-bottom:6px">'+i.d+'</div>').join('');
+    t.textContent='QUIKSTOP'; sub.textContent='The servo. Cash only; crises exempt.'+
+      (ECON.shopMult()!==1? ' (crisis pricing ×'+ECON.shopMult().toFixed(2)+')':'');
+    bd.innerHTML='';
+    Object.entries(ITEMS).forEach(([id,item])=>{
+      const price=Math.round(item.cost*ECON.shopMult());
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
+        'padding:6px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
+      row.innerHTML='<span>'+(item.emoji||'')+' '+item.name+
+        (G.items&&G.items[id]? ' <span style="color:var(--intel)">×'+G.items[id]+'</span>':'')+
+        '</span><span style="color:var(--gold)">$'+price+'</span>';
+      const buy=document.createElement('button');
+      buy.textContent='BUY';
+      buy.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
+      buy.onclick=()=>{
+        if(G.cash<price){ toast('INSUFFICIENT CASH — rejected by the till','bad'); beep('bad'); return; }
+        G.cash-=price;
+        G.items=G.items||{};
+        G.items[id]=(G.items[id]||0)+1;
+        toast('💰 −$'+price+' · +1 '+(item.emoji||'')+' '+item.name,'');
+        beep('coin'); renderHUD(); save(true); openStub('shop');
+      };
+      row.appendChild(buy);
+      bd.appendChild(row);
+      const tip=document.createElement('div');
+      tip.style.cssText='color:var(--dim);font-size:12px;padding-bottom:8px';
+      tip.textContent=item.d+' · held: $'+G.cash;
+      bd.appendChild(tip);
+    });
   } else if(key==='swap'){
-    t.textContent='BENCH SWAP'; sub.textContent='Four on duty; everyone else rests and rehearses at hubs. Coming P1.';
-    bd.innerHTML=G.party.map(id=>'<div style="color:'+CHARS[id].color+'">◆ '+CHARS[id].name+
-      ' <span style="color:var(--dim)">— '+CHARS[id].style+'</span></div>').join('')+
-      '<div class="sub" style="margin-top:12px">Recruits arrive by story: two early in Act 1, two in late Act 1, two in Canberra. Two may instead become rival bosses. One is a secret.</div>';
+    t.textContent='BENCH SWAP'; sub.textContent='Four on duty; the bench rests, rehearses, and renews referrals.';
+    bd.innerHTML='';
+    const mkline=(id,zone,swapTo)=>{
+      const r=document.createElement('div');
+      r.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:5px 0;'+
+        'border-bottom:1px dotted rgba(255,255,255,.1)';
+      const c=CHARS[id];
+      r.innerHTML='<span style="color:'+c.color+'">'+c.name+' <span style="color:var(--dim)">'+
+        '('+zone+') — '+c.style+'</span></span>';
+      const btn=document.createElement('button');
+      btn.textContent= swapTo==='bench'? '→ BENCH':'→ LINEUP';
+      btn.style.cssText='margin-left:10px;padding:2px 10px;font-size:12px';
+      btn.onclick=()=>{
+        if(swapTo==='bench'){
+          if(G.party.length<5) return;
+          const lastActive=G.party.pop();
+          G.bench.unshift(lastActive);
+          toast(lastActive+' → bench','intel');
+        } else {
+          if(G.party.length<4){
+            G.party.push(id);
+          } else {
+            const out=G.party.pop();
+            G.bench.push(out);
+            G.party.push(id);
+            toast(out+' ⇄ '+id,'intel');
+          }
+          const i=G.bench.indexOf(id); if(i>=0) G.bench.splice(i,1);
+        }
+        beep('tick'); renderHUD(); save(true); openStub('swap');
+      };
+      r.appendChild(btn);
+      bd.appendChild(r);
+    };
+    G.party.forEach(id=>mkline(id,'active','bench'));
+    G.bench.forEach(id=>mkline(id,'bench','active'));
+    if(!G.bench.length){
+      const n=document.createElement('div'); n.className='sub'; n.style.marginTop='10px';
+      n.textContent='Bench empty — recruits arrive by story: two early in Act 1, two in late Act 1, two in Canberra. Two may instead become rival bosses. One is a secret.';
+      bd.appendChild(n);
+    }
   } else if(key==='ops'){
     t.textContent='INTEL OPS'; sub.textContent='Information is the second currency. The first is cash. The third is being believed.';
     bd.innerHTML=
       '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted rgba(255,255,255,.1)">'+
       '<span>· SELL INTEL — flush intel to cash at mood rates</span><span style="color:var(--gold)">'+
-      {CALM:'$2',BOOM:'$2',FRENZY:'$3',PANIC:'$4'}[G.mood]+' now</span></div>'+
+      '$'+ECON.sellRate[G.mood]+' now</span></div>'+
       '<button id="sellOne" style="margin-top:10px">SELL 1 🛈</button>'+
       '<div class="sub" style="margin-top:14px">'+
-      '· PEEK NEXT EVENT (2🛈) — comes with the event deck, P3<br>'+
+      '· PEEK NEXT EVENT (2🛈) — comes with the market deck, P3<br>'+
       '· THE DOSSIER (3🛈) — reveal enemy statlines, P2<br>'+
       '· PLANT BUG (2🛈) — pre-battle debuffs, P2<br>'+
-      '· BURN A FAVOR (1🛈) — recruit favours, P1<br>'+
-      '· BLACK-MARKET GEAR — back-alley stock, P1</div>';
+      '· BURN A FAVOR (1🛈) — hub favours, P3<br>'+
+      '· BLACK-MARKET GEAR — prices move with the mood, P3</div>';
     const sb=bd.querySelector('#sellOne');
     sb.onclick=()=>{
       if(G.intel<1){ toast('NO INTEL LEFT TO SELL','bad'); beep('bad'); return; }
-      const rate={CALM:2,BOOM:2,FRENZY:3,PANIC:4}[G.mood]||2;
+      const rate=ECON.sellRate[G.mood]||2;
       G.intel--; G.cash+=rate;
       toast('🛈 −1 → 💰 +$'+rate,''); beep('coin');
       renderHUD(); save(true); openStub('ops');
     };
   } else if(key==='backrooms'){
-    t.textContent='THE BACKROOMS'; sub.textContent='Fluorescent hum. No signage. One purple door.';
-    const n=((G.flags.madeVisits||0)+1);
-    G.flags.madeVisits=n;
-    const lines=[
-      '“MADE is not a place. It is a method.”',
-      '“You have returned. MADE was never elsewhere.”',
-      '“The door remembers the third visit. So will the sticker.”'
-    ];
-    bd.innerHTML='<div style="color:#b18cff;padding:8px 0 14px">'+lines[Math.min(n-1,2)]+'</div>'+
-      '<div class="sub">Purple door visits: '+(n>=3?'3 — door now politely refuses entry':'')+
-      (n<3? n+'/3':'')+(n<3?'&nbsp;· something will be acknowledged on the third (P5: secret sticker)':'')+'</div>';
-    log('MADE: purple door visit #'+n);
-    if(n===3) toast('🟣 A SECRET WAS ACKNOWLEDGED','intel');
+    t.textContent='THE BACKROOMS'; sub.textContent='Travel to The Backrooms from the ZONES panel for the purple door. This panel hums in sympathy.';
+    bd.innerHTML='<div class="sub">The door remembers every visit across the whole game. Three visits across the run, and something will be acknowledged. No refunds.</div>';
+    bd.insertAdjacentHTML('beforeend',
+      '<div class="row" style="color:#b18cff">Purple door visits so far: '+(G.flags.madeVisits||0)+'/3</div>');
   }
   openOv('stov'); beep('intel');
 }
