@@ -291,6 +291,45 @@ exact required filenames (case-sensitive).
   verdict path; recorded as accepted residual, watch not error);
   `dev/diff_test.js` 20/20; parse OK, scene refs OK, CJK clean.
 
+### Session: P6 batch 3 — final visual sweep + operative fatigue (spiral fix)
+
+- **Final visual sweep (CSS-only, no markup restructuring):**
+  - Zone buttons: `▸` arrow glyph, gold hover with 3px slide, locked ones
+    dimmed with a dashed border (`.locked` class added in `renderOps`).
+  - Choice/menu buttons (`.chbtn`): 4px slide on hover — applies to story
+    choices and battle menus alike.
+  - HUD party cards: soft background lift on hover.
+  - Shop rows (`.shoprow` class on the Quickstop rows): faint gold wash on
+    hover.
+  - Toasts: drop shadow; overlay modals: short `slam` entrance (reuses the
+    existing keyframe); title H1: faint red glow.
+- **Operative fatigue — the spiral fix (the real find of batch 3):**
+  - The 24-crew battery run surfaced a persistent (≈4% of crews) spiral
+    error: crews losing the same scripted fight (`shadow_ops`, which
+    guards the M3 milestone) 8+ times under an unbroken FRENZY stretch —
+    mood only redraws at milestones, so retrying the same site bought no
+    new information and thin crews ground on it forever.
+  - Fix: **operative fatigue** — each retreat from the same site leaves
+    that garrison tired: foe **ATK −8% per prior loss at the same
+    `b.id`, capped at 3 (−24%)**, HP untouched. Counter is `G.fatigue`
+    (persisted + synced via `{t:'g'}` like everything else; old saves
+    backfill via the `undefined` guard). Reset to zero when the site is
+    finally secured.
+  - Return visits announce it: `⚑ RETURN VISIT — this garrison has
+    repelled the committee ×N. Its enthusiasm is down N% (ATK).`
+  - Theme-consistent and pairs with the half-fee committee split:
+    retrying is now strategic (garrisons wear down), not a guaranteed wall.
+  - `TUNING.fatigue:{atk:0.08,max:3}` TWEAK knob; `mkFoeUnit` applies it
+    after the mood/diff/bug chain (multiplies the final ATK).
+- **Verification:** `dev/diff_test.js` **23/23** (adds fatigue knob
+  checks: ATK lowering, HP untouched, table values); 24-crew battery
+  **24/24 synced verdicts, 0 warns, 0 errors** — the fatigue hatch
+  eliminated the warn/error grind class present in the same battery
+  before the fix (previously 1 error + 4 warns in 24); `dev/playtest.js`
+  14/14, 0 findings; parse OK, scene refs OK, CJK clean.
+- **Remaining known-open items:** per-skill cast twinkle (audio), hub/zone
+  card art direction, real-browser PeerJS smoke test (manual, two tabs).
+
 
 
 ### Session: automated playtester + first findings

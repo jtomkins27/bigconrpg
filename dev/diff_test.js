@@ -120,5 +120,17 @@ chk(spread.ha[2] > 0, '4-op fight (shadow_ops) has no HARD cliff',
 chk(spread.ha[4] < 1 || spread.ha[4] === 1, 'boss may demand play, not just spam');
 chk(spread.ea[3] >= spread.ha[3], 'coal_ceo easier on EASY than HARD');
 
+// --- P6 operative fatigue: return visits wear the garrison down (ATK only) ---
+api.G().fatigue={};
+const fatA0=api.mkFoe('b4_guard').atk;
+api.G().fatigue={b4_guard:3};
+const fatA3=api.mkFoe('b4_guard').atk;
+chk(fatA3 < fatA0, 'operative fatigue lowers foe ATK on repeat visits', fatA0+' → '+fatA3);
+chk(api.mkFoe('b4_guard').maxhp === 36, 'fatigue leaves foe HP untouched', api.mkFoe('b4_guard').maxhp);
+chk(api.TUNING.fatigue.atk === 0.08 && api.TUNING.fatigue.max === 3,
+  'fatigue knobs (−8%/visit, cap 3)');
+api.G().fatigue={};
+api.setDiff('st');
+
 console.log('=== DIFF TEST: '+ok+' ok / '+fail+' fail ===');
 process.exit(fail? 1: 0);

@@ -216,6 +216,22 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .logfine{color:var(--dim);font-size:12px;margin:10px 0 4px;line-height:1.6}
 .lognew{color:#fff;animation:fadein .25s}
 
+/* ---- P6 final visual sweep: hover polish across interactive surfaces ---- */
+.zonebtn{transition:border-color .15s,transform .15s,opacity .15s}
+.zonebtn::before{content:"▸ ";color:var(--red2);font-weight:bold}
+.zonebtn.locked{opacity:.45;border-style:dashed}
+.zonebtn:not(:disabled):hover{border-color:var(--gold);transform:translateX(3px)}
+.chbtn{transition:transform .12s}
+.chbtn:hover{transform:translateX(4px)}
+.pcard{transition:background .15s}
+.pcard:hover{background:#1c1926}
+.shoprow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;
+  border-bottom:1px dotted rgba(255,255,255,.1);transition:background .15s}
+.shoprow:hover{background:rgba(224,177,60,.05)}
+.toast{box-shadow:0 4px 18px rgba(0,0,0,.45)}
+.overlay.on .modal{animation:slam .25s}
+#titlebox h1{text-shadow:0 0 28px rgba(201,54,46,.35)}
+
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line)}
 ::-webkit-scrollbar-track{background:#131118}
@@ -611,6 +627,7 @@ const TUNING={
   koAfterBattle:1,      /* downed allies revive here (HP floor) */
   shakenAtk:0.85,       /* atk multiplier when party starts battles Shaken */
   lossCashPenalty:0.2,  /* retreat loses this fraction of cash — never fatal */
+  fatigue:{atk:0.08, max:3}, /* P6: foe ATK −8% per prior retreat from the same site, capped at −24% */
   ratchet:{hp:0.12, atk:0.10, reward:0.15},
   /* per-stage scaling: level per milestone stamped */
   charLvlHP:0.10, charLvlMP:0.06, charLvlATK:0.12, charLvlDEF:0.06,
@@ -1302,6 +1319,7 @@ function freshState(pcid){
     st:{},         /* P2: persistent hp/mp per roster member */
     mood:'CALM',
     diff: selDiff(),   /* P6: title-screen difficulty, carried in the save + {t:'g'} sync */
+    fatigue:{},    /* P6: per-site foe fatigue counters (operative fatigue) */
     deckPos:0,
     scene:null, block:0,
     log:[], muted:false,
@@ -1594,7 +1612,7 @@ function renderOps(){
     const z=ZONES[zk];
     const un=G.zones.unlocked.includes(zk);
     const btn=document.createElement('button');
-    btn.className='zonebtn'; btn.disabled=!un;
+    btn.className='zonebtn'+(un? '': ' locked'); btn.disabled=!un;
     btn.setAttribute('data-zk',zk);
     btn.innerHTML=z.name+(un? '': ' <span class="lock">🔒</span>');
     btn.title=z.d;
@@ -2058,13 +2076,18 @@ function mkPartyUnit(id){
 function mkFoeUnit(eid,i,n){
   const g=ENEMIES[eid]||{}, s=ENEMY_STATS[eid]||{}, lv=Math.max(1,G.phase-1);
   const bug=BF_BUG||1;   /* planted bug: foe ATK −25% for this battle */
+  /* P6 operative fatigue: each prior retreat from this site wears the same
+     garrison down — the committee's attention span applies to henchmen too.
+     ATK-only relief, capped. Escapable spirals, cheaper retries. */
+  const fat=Math.min(TUNING.fatigue.max, (G.fatigue&&G.fatigue[eid])||0);
+  const fa=1 - fat*TUNING.fatigue.atk;
   const dh=DIFFS[G.diff]||DIFFS.st;   /* P6: title-screen difficulty rides the same choke point */
   const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)*ECON.enc()*bug*dh.foe) : base;
   return {
     side:'foe', eid, tag:(n>1? ' '+String.fromCharCode(65+i):''),
     name:(g.name||eid)+(n>1? String.fromCharCode(65+i):''),
     emoji:g.emoji||'♟', hp:sc(s.hp,s.hp||30), maxhp:sc(s.hp,s.hp||30),
-    mp:s.mp||0, maxmp:s.mp||0, atk:sc(s.atk,s.atk||10), def:s.def||6, agi:s.agi||8,
+    mp:s.mp||0, maxmp:s.mp||0, atk:Math.max(1,Math.round(sc(s.atk,s.atk||10)*fa)), def:s.def||6, agi:s.agi||8,
     boss:!!g.boss, statuses:[], summoned:false
   };
   /* note: bug hits HP too — a body-affecting wiretap. Cheap sabotage.
@@ -2095,6 +2118,11 @@ function beginBattle(b, box){
   cueCrew(BATTLE.boss? 'boss':'fight');   /* P6 audio kit: battle-start cue, host + crew */
   renderBattle();
   battleBeat('⚔ '+((ENEMIES[b.id]||{}).name||'HOSTILES')+' — a turn-based fight begins.\n'+((ENEMIES[b.id]||{}).line||''));
+  if(Math.min(TUNING.fatigue.max, (G.fatigue&&G.fatigue[b.id])||0) > 0){
+    const fat=Math.min(TUNING.fatigue.max, (G.fatigue&&G.fatigue[b.id])||0);
+    battleBeat('⚑ RETURN VISIT — this garrison has repelled the committee ×'+fat+
+      '. Its enthusiasm is down '+Math.round(fat*TUNING.fatigue.atk*100)+'% (ATK).');
+  }
   nextTurn();
 }
 function battleBeat(msg){
@@ -2433,6 +2461,7 @@ function endBattle(win){
       if(u.down){ u.hp=Math.max(TUNING.koAfterBattle, Math.round(u.maxhp*0.25)); u.down=false; }
     });
     persistUnits();
+    if(G.fatigue && G.fatigue[BATTLE.b.id]) delete G.fatigue[BATTLE.b.id];   /* P6: garrison resets on a clean win */
     w.innerHTML='<div style="color:var(--ok)">✅ SITE SECURED — '+
       ((ENEMIES[BATTLE.b.id]||{}).name||'HOSTILES')+' stood down.</div>'+
       '<div class="fine">The party catches its breath: +'+Math.round(TUNING.postBattleHeal*100)+'% HP, +'+
@@ -2445,6 +2474,11 @@ function endBattle(win){
     const dh=(DIFFS[G.diff]||DIFFS.st);
     const loss=Math.round(G.cash*TUNING.lossCashPenalty*split*dh.loss);
     G.cash-=loss;
+    /* P6 operative fatigue: the same garrison has now repelled the committee
+       once more — the next visit meets a more tired reception (foe ATK −8%,
+       capped). Gated so summonable minions and fresh ids never pre-fatigue. */
+    if(G.fatigue===undefined) G.fatigue={};
+    G.fatigue[BATTLE.b.id]=Math.min(TUNING.fatigue.max, (G.fatigue[BATTLE.b.id]||0)+1);
     BATTLE.team.forEach(u=>{ u.hp=Math.round(u.maxhp*0.5); u.mp=Math.round(u.maxmp*0.5); u.down=false; });
     persistUnits();
     w.innerHTML='<div style="color:var(--red)">🟥 WITHDRAWAL — the site was not held.</div>'+
@@ -2724,6 +2758,7 @@ function openStub(key){
     Object.entries(ITEMS).forEach(([id,item])=>{
       const price=Math.round(item.cost*ECON.shopMult());
       const row=document.createElement('div');
+      row.className='shoprow';
       row.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
         'padding:6px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
       row.innerHTML='<span>'+(item.emoji||'')+' '+item.name+
