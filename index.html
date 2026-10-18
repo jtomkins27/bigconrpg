@@ -2339,7 +2339,14 @@ function partyTurn(u){
   const opts=[
     {k0:'1.', x:'Attack', fn:()=>menuTarget(u)},
   ];
-  if(u.kit.length) opts.push({k0:(opts.length+1)+'.', x:'Skill', fn:()=>menuSkill(u)});
+  if(u.kit.length){
+    /* P6 UX: an actor whose MP is below the whole kit sees Skill pre-greyed
+       (mirrors menuSkill's cost logic incl. Bullock's +1 YCC) instead of
+       opening a menu where every line is struck through. Text unchanged. */
+    const afford=u.kit.some(sk=>(sk.cost||0)+(BATTLE&&BATTLE.ycc? 1:0)<=u.mp);
+    opts.push({k0:(opts.length+1)+'.', x:'Skill', dis:!afford,
+      sub:!afford? 'no affordable skills':undefined, fn:()=>menuSkill(u)});
+  }
   if(Object.values(G.items||{}).some(c=>c>0)) opts.push({k0:(opts.length+1)+'.', x:'Item', fn:()=>menuItem(u)});
   opts.push({k0:(opts.length+1)+'.', x:'Defend — brace, halve next hit', fn:()=>{
     addStatus(u,{k:'defbuff', v:Math.round(u.def*0.5+2), t:1, name:'BRACED'});

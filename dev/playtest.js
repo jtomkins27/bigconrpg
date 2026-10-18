@@ -172,7 +172,7 @@ function chooseOption(run, btns, hint){
   if(labels.some(l=>/Attack/.test(l))){
     const r=Math.random();
     const iAttack=btns[0];
-    const iSkill=btns.find(b=>/Skill/.test(String(b.inner||'')));
+    const iSkill=btns.find(b=>/Skill/.test(String(b.inner||'')) && !b.disabled);
     const iDefend=btns.find(b=>/Defend/.test(String(b.inner||'')));
     /* SOAK FIND: an actor with MP below every kit cost looped Skill↔Back to
        the watchdog. Once a kit has come back empty this battle, resolve with

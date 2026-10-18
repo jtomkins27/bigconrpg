@@ -167,7 +167,7 @@ function chooseOption(run, btns, hint){
   }
   if(labels.some(l=>/Attack/.test(l))){
     const iAttack=btns[0];
-    const iSkill=btns.find(b=>/Skill/.test(String(b.inner||'')));
+    const iSkill=btns.find(b=>/Skill/.test(String(b.inner||'')) && !b.disabled);
     const iDefend=btns.find(b=>/Defend/.test(String(b.inner||'')));
     const r=Math.random();
     /* SOAK FIND: an actor with MP below every kit cost looped Skill<->Back

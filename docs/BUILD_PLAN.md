@@ -377,6 +377,37 @@ Original batch list, for the record:
 - **Remaining known-open items:** unchanged from batch 3 (per-skill
   cast twinkle, hub art direction, manual real-browser PeerJS smoke).
 
+### Session: P6 close-out — smoke-readiness + the disabled-Skillnicety
+
+- **Real-browser smoke prep (docs/SMOKE_TEST.md):** the live-CDN path the
+  FakePeer harness cannot touch is now covered by a ~15-minute manual
+  checklist — kit-load (incl. blocking the CDN to verify the graceful
+  "PeerJS did not load… solo campaign still works" fallback), host/join
+  handshake (wrong-code retry, `unavailable-id` re-code), a full crew
+  session, disconnect takeover + re-join resume, and a solo regression.
+- **Automated smoke-readiness verification:**
+  - CDN `unpkg.com/peerjs@1.5.5/dist/peerjs.min.js` fetched: genuine
+    ~87KB PeerJS bundle, reachable.
+  - Both `NET.hostLobby` and `NET.joinLobby` already fail fast with
+    early return when `typeof Peer==='undefined'`; host retries new
+    codes on `unavailable-id`; client prints `Nobody hosting code…` on
+    `peer-unavailable`. No graceful-degradation work required.
+  - Deploy audit: all 13 portraits referenced with case-exact filenames
+    (verified against `assets/characters/` on disk) — safe on
+    case-sensitive static hosts; all paths relative.
+- **Disabled-Skill UX nicety (engine):** in `partyTurn`, the main-menu
+  Skill option is now greyed with the note `no affordable skills` when
+  MP is below every kit cost (mirrors `menuSkill`'s logic, incl.
+  Bullock's +1 YCC era), replacing the empty-menu loop that the soak
+  found. Text unchanged; broadcast payloads already carry `dis`/`sub`,
+  so clients render it for free. Both auto-pilots now also skip a
+  disabled Skill in their main-menu scan (`!b.disabled` filter).
+- **Verification:** parse/CJK/scene-ref clean; `dev/playtest.js` 14/14
+  (158/158 battles); `dev/mp_test.js` 12/12 crews synced (2 soft grind
+  warns, self-recover); `dev/diff_test.js` 23/23; 6-minute MP soak —
+  18 runs (~200 crews), 0 stuck battles, 0 errors, 0 failed runs.
+
+
 
 
 
