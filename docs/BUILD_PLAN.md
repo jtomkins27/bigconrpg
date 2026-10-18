@@ -195,7 +195,17 @@ exact required filenames (case-sensitive).
 > (open `index.html` twice → HOST + JOIN with the same 5-char code) —
 > the harness covers logic over a fake bus, not the live CDN path.
 
-### Next up — P6, in batches
+### P6 status: complete — shipped in three batches
+
+1. **Batch 1 — `10d48b6`: difficulty, smoother, stingers, Bessock cameo.**
+2. **Batch 2 — `d93066e`: battle-panel polish, audio-cue kit + crew relay,
+   power-curve sweep that softened HARD to 1.10/1.10 (was 1.15/1.15 —
+   the sweep caught a 0%-win cliff from the stacked multipliers).**
+3. **Batch 3 — `44f1856`: final visual sweep + operative fatigue, which
+   killed the ~4% MP spiral-error class (24-crew battery went from
+   1 error + 4 warns to 24/24, 0 findings).**
+
+Original batch list, for the record:
 
 1. **Difficulty select on the title screen** (EASY / STANDARD / HARD):
    a `diff` field in the save scales foe stats + encounter mood spikes at
