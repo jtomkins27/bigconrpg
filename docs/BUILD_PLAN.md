@@ -101,4 +101,112 @@ Endings scored from mandates, cortisol, cash, intel, roster, choices, MADE secre
 
 Portraits referenced from `assets/characters/` (Bullock: placeholder silhouette until user drops file in). Emoji glyphs for 💰🛈🔥 to match the board game's vibe.
 
+**→ Asset checklist:** see `docs/IMAGE_ASSETS.md` for the full, current list of
+portrait/zone/enemy image files — what's on disk, what's wired into scenes, and
+exact required filenames (case-sensitive).
+
 **Build order:** P0 skeleton + PC select + scene engine + HUD + saves → P1 Sydney Act 1 + first battles + shop → P2 full combat engine → P3 events/mood/intel/cortisol → P4 Canberra + fiscal boss + Mandate → P5 rivals + Bullock finale + endings + MADE → P6 balance/audio/polish.
+
+---
+
+## Build progress log (updated as phases land)
+
+- **P0–P3:** done (skeleton, Act 1, combat engine, market deck/mood/intel/cortisol).
+- **P4:** done — `m3_flynorth`, real Parliament House / Press Club / Qantas / Treasury scenes,
+  Shadow Spokes-Treasurer boss (scaffold summon), Fiscal Mandate → **THE ACCORD** unlocks,
+  M4 → phase 4 BONDMAGEDDON COUNTDOWN (market pinned to PANIC reactions at M5-adjacent draws),
+  out-of-battle consumables (POCKETS in Intel Ops).
+- **P5:** done —
+  - Coal Corp optional boss (Acting CEO, floor 4B).
+  - Recruit math completed per plan: 2 early Act 1 (m1 lobby + tower revisit),
+    2 late Act 1 (newsroom + hedge fund), 2 Canberra (jet + Question Time),
+    rival-of-record joins after the gauntlet rematch, secret recruit via the
+    3rd purple-door visit (MADE — sticker + recruit if a face remains unclaimed).
+  - **M5 ACCORD SUMMIT:** RBA gauntlet (Shadow Ops → rival rematch → Dark Pool Kraken),
+    Bullock two-phase finale with Cash Rate Hike (drains party cash, powers her up)
+    and Yield Curve Control (+1 MP all skills in phase 2), then the script twist:
+    Offer THE ACCORD / Crush / Helicopter Money.
+  - **Verdicts:** Second Accord / Uneasy Truce / Iron Ledger / Helicopter Money (+ MADE
+    sticker), plan-scored out of 123, shown on the verdict overlay (ESC/Enter = credits).
+- **P6 (remaining):** full balance pass against real playtesting, more audio kit /
+  music selection, visual polish, title-screen difficulty options.
+
+### Session: multiplayer (P5.5) — static-site 4-player crews over WebRTC
+
+- **Architecture (host-authoritative):** the host runs the whole engine
+  (scenes, battles, economy, Autosave truth); clients render broadcast
+  beats and send intents. Solo play is untouched: `NET.role==='solo'`,
+  zero networking, all MP guards are no-ops.
+- **Transport:** PeerJS 1.5.5 (CDN), ids `bcrpg-online-v1-<5-char code>`;
+  lobby with name + candidate pick per player; `{t:'start'}` per-conn
+  handshake, then mirrored `{t:'g'}` full-state sync (debounced 120 ms;
+  also hooked into `renderHUD`/`battleBeat`/`nextTurn` so mid-battle
+  drains/cash shredders stay live on client HUDs).
+- **Message contract** (host→client): `scene/k/say/choice/menu/newbox/box/
+  rbeat/made/ms/ev/ending/toast/g/lobby/start/resume/bye/trap`;
+  (client→host): `hello/pcpick/pick/skip/menuPick/cont`. Beats carry a
+  monotonic serial `bs`; client skips send `{t:'skip', bs}` and the host
+  accepts only `bs > NET._skipProc` — a laggy client can never
+  double-advance the story.
+- **Ownership:** `G.mpSeats`/`G.mpNames` persist in the save. Clients only
+  act on menus for units they own (`menuPick` validated by seq + owner);
+  everyone else's menu renders as a `⏳ … is deciding their move…` waiter.
+  Story choices: first click wins (`NET.CHOICE` ctx). Battle result
+  CONTINUE: host-executed (`NET.CONT`). Host-only utilities (shop, bench
+  swap, ops, pockets, zones) are `NET.uiGate()`-guarded.
+- **Disconnects:** the disconnecting player's character becomes
+  host-controlled; bench-swap refuses to bench player characters, and the
+  `→ LINEUP` pop-path now replaces the last NPC slot instead of popping
+  (a 4/4 crew could otherwise silently bench a seat). Late joiners replay
+  the scene buffer (`{t:'resume'}`) or spectate.
+- **MP balance inside the committee:**
+  - `joinChar` auto-swing (host campaigns only): when seats fill two of
+    four slots, strong recruits swap in over the weakest non-seat NPC
+    (solo keeps its original fill order).
+  - Withdrawal fee halved in MP — "the committee splits the tab" — so a
+    broke crew cannot fall into an unbuyable death spiral (the door is
+    what killed runs where meals cost more than the treasury).
+- **Menu refactor for MP:** all battle menus are now built as data
+  (`menuOpen(kind,u,prompt,opts)` → `{k0,x,sub,dis,mpc,rhp}` payloads)
+  with a single `menuDo(kind,u,i)` executor; solo labels/behaviour are
+  byte-identical (re-verified post-refactor). Heal/revive kit options are
+  marked `♥` in the skill menu.
+- **`dev/mp_test.js` (new):** two fake-DOM sandboxes over a synchronous
+  FakePeer bus; plays FULL 2-player campaigns (client drives dialogue
+  skips end-to-end through the bs guard; client-owned battle turns via
+  `menuPick`; desync detector host-vs-client state persists), plus a
+  disconnect mid-campaign test. Results: 8/8 crews reach a synced verdict;
+  zero crash/stall/desync findings across batches.
+- **Pilot upgrades (both harnesses):** they now shop meals, bench-swamp
+  fresh substitutes, and seek `♥` heal/revive options when a teammate is
+  down or the actor is under 40% HP. With those, `dev/playtest.js` is
+  14/14 clean again — the earlier treasury grind was the pilot starving
+  (closing the shop without buying) on BOTH solo and crews.
+- **Known balance niche (deferred to P6):** a 2-crew with unlucky mood
+  draws (FRENZY×1.18) can still drop the scripted 4-operative fights
+  repeatedly before clawing back; real players have ACCORD/bench/ops and
+  won't grind like a random script.
+
+### Session: automated playtester + first findings
+
+- **`dev/playtest.js` built and battle-hardened:** 14/14 headless runs now
+  finish at the verdict screen with zero errors/warnings; per-enemy
+  `testBattle` sweep clean (all winnable at lv6 × 4-party).
+- **Real engine fix 1 — battle menu Back buttons:** entering the Skill menu
+  with insufficient MP for every kit skill soft-locked the unit (no
+  cancel existed). Added `← Back` to the Skill / Item / target menus
+  (returns to the unit's main move menu).
+- **Real engine fix 2 — `joinChar` benched-member guard:** a character
+  already on the bench could be joined a second time (e.g. bench-Lucian
+  then the `joinrival` block) — roster dedupe now checks both arrays.
+
+## Automated playtesting
+
+Run `node dev/playtest.js [runs]` (or `node dev/playtest.js sweep` for a
+battle-tuning sweep only). It boots the game headlessly with a fake DOM, plays
+the WHOLE story to the verdict screen by clicking the real scene engine
+(12 random-candidate runs by default, choice-diverse so rivals/branches vary),
+sweeps every enemy through `testBattle` with a level-6 four-person party for
+win-rate outliers, and reports any crash, stall, NaN/negative resources, roster
+overflow, or unreachable-scene finding. Exit code 1 on errors — wire it into a
+pre-release check. Findings it surfaces get fixed in `index.html` directly.

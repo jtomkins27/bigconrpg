@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BIGCON RPG: BONDMAGEDDON — P0</title>
+<title>BIGCON RPG: BONDMAGEDDON — P6-MP</title>
+<!-- PeerJS (WebRTC) — crew multiplayer on any static host; solo runs without it -->
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <!--
-  BIGCON RPG: BONDMAGEDDON — P0 build (skeleton)
+  BIGCON RPG: BONDMAGEDDON — P5 build (rivals + Bullock finale + endings + MADE)
   Sections: [1] CSS · [2] HTML · [3] DATA · [4] ENGINE · [5] UI · [6] BOOT/DEV
   Phase roadmap (plan file):
     P0 skeleton + PC select + scene engine + HUD + saves   (this file)
@@ -199,6 +201,18 @@ button:disabled{opacity:.35;cursor:not-allowed}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line)}
 ::-webkit-scrollbar-track{background:#131118}
+
+/* ---- crew lobby (multiplayer) ---- */
+#mpov input{background:#141118;border:1px solid var(--line);color:var(--ink);
+  padding:8px 10px;border-radius:4px;font-family:inherit;font-size:14px;letter-spacing:2px}
+#mpList .mprow{display:flex;justify-content:space-between;max-width:520px;margin:0 auto;
+  padding:4px 0;border-bottom:1px dotted rgba(255,255,255,.12);font-size:14px}
+.mpbadge{color:var(--gold);font-size:12px;letter-spacing:1px}
+#mpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:8px;max-width:820px;margin:12px auto}
+#mpGrid .selcard{cursor:pointer;padding:8px;font-size:12px}
+#mpGrid .selcard.taken{opacity:.3;cursor:not-allowed;pointer-events:none}
+#mpGrid .selcard.picked{outline:2px solid var(--gold)}
 </style>
 </head>
 <body>
@@ -221,11 +235,13 @@ button:disabled{opacity:.35;cursor:not-allowed}
 <div class="scr on" id="title">
   <div id="titlebox">
     <h1>BIGCON RPG<br><b>BONDMAGEDDON</b></h1>
-    <div class="tag">Turn-Based Fiscal Treason · P0 Build</div>
+    <div class="tag">Turn-Based Fiscal Treason · P5 Build — Accords, Verdicts &amp; Helicopters</div>
     <div class="rule"></div>
     <div class="btns">
       <button id="btnNew">▶ &nbsp;NEW GAME</button>
       <button id="btnCont" disabled>▶ &nbsp;CONTINUE</button>
+      <button id="btnHost">◉ &nbsp;HOST A CREW</button>
+      <button id="btnJoin">◉ &nbsp;JOIN A CREW</button>
       <button id="btnMute">♪ &nbsp;SOUND: ON</button>
     </div>
     <div class="foot">NO DICE. THE DICE WERE RIGGED FROM THE START.</div>
@@ -282,10 +298,38 @@ button:disabled{opacity:.35;cursor:not-allowed}
   <button id="evOk">THE MARKET REACTS</button>
 </div></div>
 
+<div class="overlay" id="endov"><div class="modal" style="border-color:var(--gold)">
+  <div class="chip gold">THE INQUIRY CONCLUDES — VERDICT</div>
+  <div id="endName" style="font-size:clamp(26px,6vw,48px);font-weight:bold;margin:12px 0;color:var(--gold)"></div>
+  <div id="endLine" style="color:var(--ink);margin-bottom:14px;max-width:640px;line-height:1.6"></div>
+  <div id="endScore" class="sub" style="max-width:640px"></div>
+  <button id="endOk">ROLL THE CREDITS</button>
+</div></div>
+
 <div class="overlay" id="stov"><div class="modal">
   <h2 id="stTitle"></h2><div class="sub" id="stSub"></div>
   <div id="stBody" style="margin-bottom:18px;line-height:1.7;font-size:14px"></div>
   <button id="stClose">CLOSE &nbsp;(ESC)</button>
+</div></div>
+
+<div class="overlay" id="mpov"><div class="modal">
+  <h2>THE CREW LOBBY</h2>
+  <div class="sub" id="mpStatus">Peer-to-peer over WebRTC (PeerJS). The host runs the campaign; everyone controls their own character. Works on any static site.</div>
+  <div id="mpJoinRow" style="display:none;gap:8px;justify-content:center;margin:12px 0;flex-wrap:wrap">
+    <input id="mpCode" maxlength="5" placeholder="CODE" style="width:9ch;text-transform:uppercase">
+    <button id="mpGo">CONNECT →</button>
+  </div>
+  <div id="mpCodeLine" style="display:none;font-size:24px;font-weight:bold;color:var(--gold);letter-spacing:6px;margin:8px 0"></div>
+  <div id="mpNameRow" style="display:flex;gap:8px;justify-content:center;margin:8px 0">
+    <input id="mpName" maxlength="12" placeholder="YOUR NAME" style="width:14ch">
+  </div>
+  <div id="mpList"></div>
+  <div id="mpGrid"></div>
+  <div class="sub" style="max-width:640px;margin:0 auto">Four seats at the table. Each player controls their own candidate in every battle; story choices go to whoever clicks first. Everything else — shop, intel ops, bench — is run by the host, exactly like a real committee.</div>
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+    <button id="mpStart" disabled>LOCK IN THE CREW — START</button>
+    <button id="mpLeave">LEAVE</button>
+  </div>
 </div></div>
 
 <script>
@@ -298,7 +342,8 @@ const PORTRAITS={
   aidan:A+'aidan.png', butler:A+'Butler.png', max:A+'max.png', lane:A+'lane.png',
   simring:A+'Simring.png', swain:A+'Swain.png', kiran:A+'Kiran.png',
   jason:A+'Jason%20(1).png', lucian:A+'Lucian.png', tan:A+'tan.png',
-  bullock:A+'bullock.png'   /* drops in later; silhouette until then */
+  bullock:A+'bullock.png',   /* FINAL BOSS; dialogue lands in P5 */
+  chalmers:A+'chalmers.png', /* THE SHADOW SPOKES-TREASURER — fiscal boss, P4 */
 };
 const ROSTER=['butler','max','aidan','lane','simring','swain','kiran','jason','lucian','tan'];
 const CANDIDATES=['butler','max','aidan','lane','simring','swain','kiran','jason','lucian','tan']; // PC-select pool (Bessock cut)
@@ -498,6 +543,7 @@ const ENEMY_STATS={
   shadow_ops: {hp:46, mp:10, atk:12, def:9,  agi:12},
   scaffold:   {hp:60, mp:0,  atk:0,  def:16, agi:4},
   spokes_tr:  {hp:190,mp:30, atk:17, def:14, agi:11},
+  coal_ceo:   {hp:150,mp:18, atk:16, def:12, agi:10},
   kraken:     {hp:230,mp:24, atk:19, def:12, agi:9},
   rival_sim:  {hp:150,mp:26, atk:14, def:10, agi:12},
   rival_max:  {hp:170,mp:22, atk:15, def:13, agi:9},
@@ -517,14 +563,18 @@ const ENEMY_AI={
   asic_raid: {moves:[{skill:'audit'},{skill:'heavy', every:2},{skill:'bellow', every:3}]},
   asic_chief:{moves:[{skill:'audit'}, {skill:'heavy', every:2}], summon:{id:'asic_drone', frac:0.5}},
   ibis_king: {moves:[{skill:'heavy'},{skill:'bellow', every:2}]},
-  spokes_tr: {moves:[{skill:'heavy'},{skill:'audit', every:2},{skill:'bellow', every:3}]},
+  spokes_tr: {moves:[{skill:'heavy'},{skill:'audit', every:2},{skill:'bellow', every:3}],
+    summon:{id:'scaffold', frac:0.5}},
+  coal_ceo: {moves:[{skill:'lug'},{skill:'heavy', every:2},{skill:'bellow', every:4}]},
   kraken:    {moves:[{skill:'lug'},{skill:'heavy', every:2}]},
   rival_sim: {moves:[{skill:'heavy'},{skill:'spin', every:2}], summon:{id:'spin_unit', frac:0.4}},
   rival_max: {moves:[{skill:'heavy'},{skill:'lug', every:2}], summon:{id:'hedge_algo', frac:0.4}},
   rival_tan: {moves:[{skill:'lug'},{skill:'heavy', every:2}]},
   rival_lucian:{moves:[{skill:'spin'},{skill:'lug', every:2}]},
-  bullock_p1:{moves:[{skill:'lug'},{skill:'audit', every:2},{skill:'bellow', every:3}]},
-  bullock_p2:{moves:[{skill:'lug'},{skill:'heavy', every:2},{skill:'audit', every:3}]}
+  bullock_p1:{moves:[{skill:'cashrate'},{skill:'lug', every:2},{skill:'bellow', every:3}],
+    summon:{id:'scaffold', frac:0.55}},
+  bullock_p2:{moves:[{skill:'cashrate'},{skill:'lug', every:2},{skill:'audit', every:3}],
+    summon:{id:'scaffold', frac:0.5}}
 };
 
 /* ===TWEAK: TUNING — the balance knobs. Values are phase-1 baseline. === */
@@ -550,7 +600,8 @@ const FOE_MOVES={
   lug:  {d:'big single swing', pw:1.45, name:'DUMP-TRUCK SWING'},
   spin: {d:'party nudge + focus', pw:0.75, aoe:true, name:'FLOOR SPIN'},
   audit:{d:'locks the least-useful ally', pw:0.5, status:'audited', name:'AUDITED'},
-  bellow:{d:'shakes the room; party atk down', pw:0.35, status:'shaken', name:'SINISTER BELLOW'}
+  bellow:{d:'shakes the room; party atk down', pw:0.35, status:'shaken', name:'SINISTER BELLOW'},
+  cashrate:{d:'Bullock only: hits and lifts party cash to power herself', pw:0.85, name:'CASH RATE HIKE'}
 };
 /* party Shaken threshold hook (cortisol) */
 const CORT={shaken:7, raid:9};
@@ -674,6 +725,8 @@ const ENEMIES={
     line:'Summoned mid-argument. Load-bearing grudges.'},
   spokes_tr:{name:'THE SHADOW SPOKES-TREASURER',emoji:'💼',boss:true,count:1,
     line:'Shadow policies must first be legislated in the shadows.'},
+  coal_ceo:{name:'COAL CORP — ACTING CEO',emoji:'🪨',boss:true,count:1,
+    line:'“Thermal coal is a currency too. It just happens to burn.”'},
   kraken:{name:'Dark Pool Kraken',emoji:'🐙',boss:true,count:1,
     line:'You cannot see it. It can see your portfolio.'},
   bullock_p1:{name:'GOVERNOR BULLOCK',emoji:'🏛',boss:true,count:1,final:true,
@@ -682,18 +735,19 @@ const ENEMIES={
     line:'Two mandates enter. One leaves upright.'}
 };
 
-/* ---- ITEMS (P1 shop stock reads from this) ---- */
+/* ---- ITEMS (P1 shop stock reads from this) ----
+   consumables carry effect fields: thp (heal), tmp (MP), cort (±), tintel (+intel). */
 const ITEMS={
-  gold_coins:{name:'Gold Coins',emoji:'🪙',cost:14,d:'−1 🔥. Heavy pocket, lighter head.'},
-  servo_meal:{name:'Servo Meal Deal',emoji:'🌭',cost:6,d:'+18 HP, +1 🔥 then −1 🔥 (net zero, insight).'},
-  butler_tea:{name:'Pot of Butler Tea',emoji:'🫖',cost:9,d:'−2 🔥, and someone says “sugar?” affecting your vote.'},
-  energy_gel:{name:'Trainee Energy Gel',emoji:'⚡',cost:4,d:'+3 MP. Tastes like a small subsidy.'},
+  gold_coins:{name:'Gold Coins',emoji:'🪙',cost:14,cort:-1,d:'−1 🔥. Heavy pocket, lighter head.'},
+  servo_meal:{name:'Servo Meal Deal',emoji:'🌭',cost:6,thp:18,d:'+18 HP, +1 🔥 then −1 🔥 (net zero, insight).'},
+  butler_tea:{name:'Pot of Butler Tea',emoji:'🫖',cost:9,cort:-2,d:'−2 🔥, and someone says “sugar?” affecting your vote.'},
+  energy_gel:{name:'Trainee Energy Gel',emoji:'⚡',cost:4,tmp:3,d:'+3 MP. Tastes like a small subsidy.'},
   binoculars:{name:'Field Binoculars',emoji:'🔭',cost:12,d:'Spy jobs cheaper: peek next market event for 1🛈 (P3).'},
   bug_kit:{name:'Bug Kit',emoji:'🐞',cost:10,d:'Pre-battle bug debuffs. Modest, but snaps shut. (P2)'},
   dossier_b:{name:'The Dossier (Burner Copy)',emoji:'🗂',cost:16,d:'Pre-battle stat reveal. Heavier than it reads. (P2)'},
-  calm_tea:{name:'Calming Tea, No Questions',emoji:'🍵',cost:8,d:'−1 🔥, party-wide. The no-questions is priced in.'},
-  golf_pass:{name:'Golf Club Guest Pass',emoji:'⛳',cost:20,d:'−3 🔥. Discretion discussed openly among those who paid.'},
-  lawyer_call:{name:'Five-Minute Lawyer',emoji:'⚖️',cost:15,d:'+1 🛈 when at 7+ cortisol. He knows a guy.'}
+  calm_tea:{name:'Calming Tea, No Questions',emoji:'🍵',cost:8,cort:-1,d:'−1 🔥, party-wide. The no-questions is priced in.'},
+  golf_pass:{name:'Golf Club Guest Pass',emoji:'⛳',cost:20,cort:-3,d:'−3 🔥. Discretion discussed openly among those who paid.'},
+  lawyer_call:{name:'Five-Minute Lawyer',emoji:'⚖️',cost:15,tintel:1,d:'+1 🛈 when at 7+ cortisol. He knows a guy.'}
 };
 
 /* ---- ZONES (13 in the plan; P0 unlocks two) ---- */
@@ -894,13 +948,22 @@ SCENES['m2_rivalboss']={zone:'— FLOOR 31 · THE CHAIR THAT WAS TAKEN —',bloc
     sub:'The Shadow Board is exposed and the rival of record chose ill. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
 ], next:()=> 'hub'};
 
-/* — M3 teaser: content lands in P4 — */
-SCENES['m3_teaser']={zone:'— QANTAS LOUNGE · DEPARTURES —',blocks:[
-  {t:'k', x:'M3 · FLY NORTH (P4 CONTENT ARROWS HERE)'},
-  {t:'say', who:'QANTAS DESK', text:'“Your booking is confirmed, pending complicated compensation.”', silh:true},
+/* — M3: FLY NORTH — Canberra, phase 3 THE SPASM — */
+SCENES['m3_flynorth']={zone:'— SYDNEY → CANBERRA · QANTAS LOUNGE, THEN WHEELS-UP —',blocks:[
+  {t:'k', x:'M3 · FLY NORTH'},
+  {t:'say', who:'QANTAS DESK', text:'“Booking confirmed. Complicated compensation pre-negotiated: you are flying on the record and paying in precedent.”', silh:true},
   {t:'say', who:'THE BUTLER', pid:'butler',
-    text:'Canberra waits. Parliament opens, Treasury burrows, and the airfare is a deduction from something. Tonight the city keeps a hum: the newsroom tip, the penthouse ledger, the deep Backrooms. Take them or leave them.'},
-  {t:'say', who:'BOARD (ELECTRONIC, SLOW TO UPDATE)', text:'CANBERRA: DELAYED. REASON: FAIR.', silh:true}
+    text:'Canberra. Parliament for the theatre, Treasury for the truth, and the Press Club for whichever is cheaper. At this altitude the yields can no longer pretend to be noise.'},
+  {t:'say', who:'PILOT (PA)', text:'“Heads down, we are entering a band of unexplained market weather. Seatbelt sign: discretionary. So is the economy.”', silh:true},
+  {t:'get', cash:20, intel:3, note:'Travel advance — the inquiry believes in receipts, not hospitality.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'We have room for one more on the manifest. Canberra rewards paperwork, and there is paperwork walking among us with strong opinions about forms.'},
+  {t:'allyChoice', pool:['swain','jason','kiran','lucian','tan'],
+    prompt:'One more seat on the jet. Who pre-boards?',
+    say:'“Canberra, is it? I bring either favour-trading or grabbing. Two of those are skills.”'},
+  {t:'say', who:'BOARD (ELECTRONIC, FINALLY UP TO DATE)', text:'DESTINATION: CANBERRA. STATUS: ALARMED.', silh:true},
+  {t:'mile', id:'M3', phase:3, phaseName:'THE SPASM',
+    sub:'Parliament, the Press Club and the Treasury basement are open. The fiscal boss unions below. Milestones from here hurt more: encounters ratchet again.'}
 ], next:()=> 'hub'};
 
 /* — zone vignettes: travel targets (visit via the ZONES panel) — */
@@ -916,7 +979,12 @@ SCENES['zs_b4']={zone:'— BIG FOUR TOWER · LOBBY REVISIT —',blocks:[
   {t:'k', x:'BIG FOUR TOWER'},
   {t:'say', who:'REPLACEMENT SUIT SECURITY', text:'“Standing orders: comply loudly, resist quietly. Also, welcome back!”'},
   {t:'battle', id:'b4_guard', reward:{cash:25, intel:2, cort:1},
-    note:'Lobby skirmishes replenish; cortisol keeps score.'}
+    note:'Lobby skirmishes replenish; cortisol keeps score.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Word of the lobby incident has recruits queuing at the revolving door. Take one; the rota thanks you in advance.'},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
+    prompt:'A colleague saw the lobby carnage and wants in:',
+    say:'“I watched you out-appointment a Chief. I bring either policy or questionable ambition.”'}
 ], next:()=> 'hub'};
 
 SCENES['zs_terminal']={zone:'— THE TERMINAL —',blocks:[
@@ -932,6 +1000,10 @@ SCENES['zs_newsroom']={zone:'— THE NEWSROOM —',blocks:[
     text:'“Your scandal isn’t out yet. I know, because I checked. Twice. For work.”'},
   {t:'say', who:'SIMRING', pid:'simring',
     text:'The trick isn’t leaking — anyone can leak. The trick is deciding WHAT WAS LEAKED, then reporting on it yourself in the third person. Watch: “sources say”.'},
+  {t:'say', who:'DIARY ROOM (HALF-HEARD)', text:'“…and if the faction can hold the lobby, they can hold a headline. I want in before the headline decides its own cast.”', silh:true},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
+    prompt:'A face from the competition is watching from the diary-room glass:',
+    say:'“I have saved two careers by rephrasing one sentence. Imagine what I can do for a war.”'},
   {t:'get', intel:2, once:'newsroom_used', note:'A tip that was half-you, half-the-universe.'},
   {t:'flagOnce', set:'newsroom_used', note:'ROOM COVER'}
 ], next:()=> 'hub'};
@@ -939,6 +1011,10 @@ SCENES['zs_newsroom']={zone:'— THE NEWSROOM —',blocks:[
 SCENES['zs_hedge']={zone:'— THE HEDGE FUND FLOOR —',blocks:[
   {t:'k', x:'THE HEDGE FUND FLOOR'},
   {t:'say', who:'HEDGE FUNDER (WHITEBOARD AT A CERTAIN ANGLE)', text:'“We are long on you, short on everything else, and flat on ethics. It’s a market-based approach.”', silh:true},
+  {t:'say', who:'AN ALUM (ALREADY EXITING)', text:'“They are hiring, extremely loudly, at the revolving door. My résumé is pre-loaded.”', silh:true},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
+    prompt:'The fund’s alum follows you out of the lift:',
+    say:'“Compensation is negotiable. Loyalty is a yellow fern. Let us begin.”'},
   {t:'get', cash:10, once:'hedge_used', note:'A “finder’s fee” for existing interestingly.'},
   {t:'flagOnce', set:'hedge_used', note:'FINDER FEE'}
 ], next:()=> 'hub'};
@@ -951,36 +1027,178 @@ SCENES['zs_backrooms']={zone:'— THE BACKROOMS —',blocks:[
     text:'Rule three still applies. I have served seven Treasurers and none of them had hinges that smooth.'}
 ], next:()=> 'hub'};
 
-SCENES['zs_coalpent']={zone:'— COAL CORP PENTHOUSE —',blocks:[
-  {t:'k', x:'COAL CORP PENTHOUSE (OPTIONAL · COMING P5)'},
-  {t:'say', who:'LOBBY CARD-READER', text:'“FLOOR 4B: AUTHORISED ACCESS ONLY. HAVE A PROSPEROUS SHIFT.”', silh:true},
+SCENES['zs_coalpent']={zone:'— COAL CORP PENTHOUSE · FLOOR 4B · THE AIR HAS OPINIONS —',blocks:[
+  {t:'k', x:'COAL CORP PENTHOUSE (OPTIONAL BOSS)'},
+  {t:'say', who:'LOBBY CARD-READER', text:'“FLOOR 4B: AUTHORISED ACCESS ONLY. HAVE A PROSPEROUS SHIFT.” The reader accepts your forged badge without looking up. Deadline culture.', silh:true},
   {t:'say', who:'THE BUTLER', pid:'butler',
-    text:'The penthouse boss is a later chapter’s content — optional, with ACCC side-eye included. The floor can wait; it is coal, it is used to waiting.'}
+    text:'The optional boss of Act One lives up here: an acting CEO who was promoted sideways, then described, and then promoted again on a technicality. He generates his own weather.'},
+  {t:'say', who:'PENTHOUSE SPEAKERS (CEILING)', text:'“GOOD NEWS: THE MINES ARE NERVOUS. BAD NEWS: SO IS EVERYTHING ELSE.” PLAYING: ELEVATOR MUSIC, AGGRESSIVE.', silh:true},
+  {t:'battle', id:'coal_ceo', reward:{cash:110, intel:6, cort:2},
+    note:'OPTIONAL — the Acting CEO defends a spreadsheet he has never fully read. Big payout if you win it.'},
+  {t:'flag', set:'coal_done', note:'PENTHOUSE: ENTERED, EXITED, QUOTED'},
+  {t:'get', cash:60, note:'Settlement: the Chairman’s golf fund, seized and “re-purposed”.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Note: party members with thermal interests are being watched now. The regulator does not read nuance, only spreadsheets. That said — victory. The elevators remember you fondly.'}
 ], next:()=> 'hub'};
 
-SCENES['zs_parliament']={zone:'— PARLIAMENT HOUSE —',blocks:[
-  {t:'k', x:'PARLIAMENT HOUSE (P4)'},
-  {t:'say', who:'DOOR SECURITY', text:'“Tour group? Media? Defendant? Pick one, the forms all work.”', silh:true}
+SCENES['zs_parliament']={zone:'— CANBERRA · PARLIAMENT HOUSE · CHAMBER AND CORRIDORS —',blocks:[
+  {t:'k', x:'PARLIAMENT HOUSE · QUESTION TIME'},
+  {t:'say', who:'DOOR SECURITY', text:'“Tour group? Media? Defendant? Pick one, the forms all work.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Question Time: eleven men shouting and one chamber pretending not to hear. The Shadow Board’s Treasurer-candidate works this room daily. We are here to hear him trip on a sentence.'},
+  {t:'choice', prompt:'Question Time is about to start. How do you take a seat?',
+    options:[
+      {x:'Press gallery, notebooks visible.', set:'qt_press', note:'The spin units will smell ink.'},
+      {x:'Public gallery, wincing at every fiscal claim.', set:'qt_public', note:'Clapping is technically illegal here. Wincing is not.'},
+      {x:'Borrow the Speaker’s aisle chair. No permission sought.', set:'qt_aisle', note:'You will be noticed. That was the plan.'}
+    ]},
+  {t:'say', who:'SHADOW SPOKES-TREASURER (FROM THE DESPATCH BOX)', pid:'chalmers', text:'“The member advocates a fiscal style. I advocate a fiscal exception: the exception is the style. Amendments available at the door, priced at retrieval cost.”'},
+  {t:'battle', id:'income_pol', reward:{cash:45, intel:4, cort:1},
+    note:'The Income Police found you winces at a fiscal claim. Functional compliance in their eyes.'},
+  {t:'get', intel:2, note:'Hansard, annotated by nobody. The Shadow Board pricing disappears when it is read aloud.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'One seat still empty on the manifest, and the Treasury basement does not book tours. Whoever follows us down there should be enthusiastic about filing.'},
+  {t:'allyChoice', pool:['swain','jason','kiran','lucian','tan'],
+    prompt:'Canberra recruit two. Who follows into the basement:',
+    say:'“Basements, is it? I have opinions about fluorescent lighting and even more about stamping things.”'},
+  {t:'flag', set:'parliament_done', note:'QUESTION TIME: RESOLVED'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Treasury next. Below the atrium there is a basement with one filing cabinet that breathes. Bring cash; the Photocopy Room respects nothing else.'}
 ], next:()=> 'hub'};
 
-SCENES['zs_pressclub']={zone:'— THE PRESS CLUB —',blocks:[
-  {t:'k', x:'THE PRESS CLUB (P4 · OPTIONAL)'},
-  {t:'say', who:'WAITER', text:'“Table for two? Or are you eating with your press release again?”', silh:true}
+SCENES['zs_pressclub']={zone:'— THE PRESS CLUB · LUNCH IS SERVED WITH FLAK JACKETS —',blocks:[
+  {t:'k', x:'THE PRESS CLUB (OPTIONAL)'},
+  {t:'say', who:'WAITER', text:'“Table for two? Or are you eating with your press release again?”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Send your cash; the club will convert it to gravitas. That conversion rate is taxed twice, but intel follows whoever is overheard at table nine.'},
+  {t:'choice', prompt:'Table nine is where the backbench strategists trade. Attend?',
+    options:[
+      {x:'Buy lunch. Listen carefully.', set:'pc_buy', note:'Intelligence is catering plus silence.'},
+      {x:'Bring your own sandwiches to the door.', set:'pc_no', note:'Free lunch; the intel rate is zero and the glances are not.'}
+    ]},
+  {t:'battle', id:'spin_unit', reward:{cash:30, intel:3, cort:1},
+    note:'A Spin Unit tried to commandeer table nine’s narrative. Table nine objected at volume.'},
+  {t:'get', intel:3, note:'Affordable rumours, pre-seasoned.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Never accept the dessert tray here on a sitting day. It has been used to pass legislation.'}
 ], next:()=> 'hub'};
 
-SCENES['zs_treasury']={zone:'— TREASURY · BASEMENT LEVEL —',blocks:[
-  {t:'k', x:'TREASURY — BASEMENT LEVEL (P4 · FISCAL BOSS)'},
-  {t:'say', who:'FLUORESCENT HUM', text:'“Welcome to the fiscal dungeon. Filing hours apply.”', silh:true}
+SCENES['zs_treasury']={zone:'— CANBERRA · TREASURY · BELOW THE ATRIUM —',blocks:[
+  {t:'k', x:'TREASURY — BASEMENT LEVEL · THE FISCAL DUNGEON'},
+  {t:'say', who:'FLUORESCENT HUM', text:'“The lifts stop at 4. The filing doesn’t. Welcome to the fiscal dungeon; filing hours apply.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Down here the Shadow Board keeps its counter-budget: the one where the fiscal mandate is choreographed by people no electorate has met. We take the mandate back the honest way — loudly, and slightly illegally.'},
+  {t:'battle', id:'shadow_ops', reward:{cash:40, intel:5, cort:1},
+    note:'The Shadow Board Operatives guard the stairs. Unlisted, unlit, keen to remain unquoted.'},
+  {t:'say', who:'SECURITY DOOR', text:'The badge reader blinks twice and files the rest. Down the basement corridor: a photocopier running at sabotage speed, and a judgement chair.', silh:true},
+  {t:'choice', prompt:'Two routes into the counter-budget vault:',
+    options:[
+      {x:'Con the photocopier into printing your credentials.', set:'tr_copies', note:'Money laundering, but for identity.'},
+      {x:'Walk the corridor the way auditors do: slowly, horribly.', set:'tr_walk', note:'Nothing attacks what it assumes is a process.'}
+    ]},
+  {t:'say', who:'THE COUNTER-BUDGET (AMPLIFIED)', text:'Line 411: buy silence, futures, and retirements. Line 412: misalign the mandates until the tax office itself files for stress leave. Line 413: YOU, OBSERVED.', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Here it comes. The Shadow Spokes-Treasurer: a position invented specifically so that a real Treasurer would have to be invented as well.'},
+  {t:'say', who:'THE SHADOW SPOKES-TREASURER', pid:'chalmers', text:'“I am the shadow the position casts on the wall, and the shadow holds the receipts. The fiscal mandate is parked in judgement. It has been parked since before you were sworn at.”'},
+  {t:'battle', id:'spokes_tr', reward:{cash:120, intel:10, cort:2},
+    note:'BOSS — the fiscal mandate is parked in judgement. It tables the counter-budget until you collapse.'},
+  {t:'say', who:'JUDGEMENT CHAIR (FINALLY CONVINCED)', text:'HONEST LEDGER RECOGNISED. FISCAL MANDATE: REALLOCATED. THE COUNTER-BUDGET IS ADJOURNED INDEFINITELY AND PERSONALLY.', silh:true},
+  {t:'get', cash:50, note:'Requisition “consulting fees” reclaimed from the counter-budget’s line 411.'},
+  {t:'mandate', which:'fiscal', accord:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The Fiscal Mandate is yours. With both ledgers half-turned, the two seats of power can be moved toward each other. Everyone on the roster has learned THE ACCORD — hold it until the monetary mandate is won.'},
+  {t:'mile', id:'M4', phase:4, phaseName:'BONDMAGEDDON COUNTDOWN',
+    sub:'The yield curve just exhaled and then screamed. Encounters get brutal, shop prices inflate — the market knows what the fiscal mandate means. The RBA vault awaits the monetary half.'}
 ], next:()=> 'hub'};
 
-SCENES['zs_qantas']={zone:'— QANTAS LOUNGE —',blocks:[
-  {t:'k', x:'QANTAS LOUNGE (P4)'},
-  {t:'say', who:'STAFF', text:'“We currently have milk and a waitlist. Same as Treasury.”', silh:true}
+SCENES['zs_qantas']={zone:'— CANBERRA · QANTAS LOUNGE —',blocks:[
+  {t:'k', x:'QANTAS LOUNGE'},
+  {t:'say', who:'STAFF', text:'“We currently have milk and a waitlist. Same as Treasury. The lounge is the calmest place in Canberra, which is regrettably a policy outcome.”', silh:true},
+  {t:'get', intel:1, once:'qantas_used', note:'Overheard risotto was covered: one strategist’s fiscal plan, rate-talk included.'},
+  {t:'flagOnce', set:'qantas_used', note:'LOUNGE TAPED'},
+  {t:'battle', id:'quant_wombat', reward:{cash:35, intel:3, cort:1},
+    note:'A Quant Wombat contested the buffet queue with out-of-sample modelling.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Parliament is the theatre, the Press Club is the catering, and the Treasury basement is where we go to be judged. Choose your violence accordingly.'}
 ], next:()=> 'hub'};
 
-SCENES['zs_rba']={zone:'— RBA BOARDROOM VAULT —',blocks:[
-  {t:'k', x:'RBA BOARDROOM VAULT (P5 · FINALE)'},
-  {t:'say', who:'THE DOOR ITSELF', text:'“The Governor sees everyone eventually. Sometimes the room does it for her.”', silh:true}
+SCENES['zs_rba']={zone:'— MARTIN PLACE · THE BUILDING WITH A BASEMENT FORTRESS —',blocks:[
+  {t:'k', x:'RBA BOARDROOM VAULT · ACCORD SUMMIT'},
+  {t:'say', who:'THE DOOR ITSELF', text:'“The Governor sees everyone eventually. Sometimes the room does it for her.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Both mandates in hand. Two keys that must be turned in the same direction, or the whole yield curve eats itself. The gauntlet between us and the Boardroom is real: Security, the rival you have not finished, and whatever is dark about the dark pool.'},
+  {t:'say', who:'ACCREDITATION DESK', text:'“Summit access pending. Bring the mandates. Bring the grudge. Bring everything, actually — it all counts.”', silh:true}
+], next:()=> 'hub'};
+
+/* — M5: the gauntlet (three fights on the way up) — */
+SCENES['m5_gauntlet']={zone:'— RBA BOARDROOM VAULT · ENTRY LEVELS —',blocks:[
+  {t:'k', x:'M5 · ACCORD SUMMIT · THE GAUNTLET (1/3)'},
+  {t:'say', who:'BUILDING SECURITY (PLURAL, FORMAL)', text:'“The building has been on alert since the fiscal mandate moved. Shadow Board Operatives were seen using the freight lift. They still cannot locate the stairs.”', silh:true},
+  {t:'battle', id:'shadow_ops', reward:{cash:55, intel:6, cort:1},
+    note:'GAUNTLET 1/3 — the Shadow Board’s last unpaid contractors.'},
+  {t:'say', who:'THE FIRST RIVAL (AGAIN)', text:'“Round two. I brought the mandate I was promised, the audience you refused, and hair that has categorically improved. This is for the chair.”'},
+  {t:'battle', id:'rivalFirst', reward:{cash:130, intel:10, cort:2},
+    note:'GAUNTLET 2/3 — the rival of record, with the mandate everyone expected them to keep.'},
+  {t:'joinrival'},
+  {t:'say', who:'THE FORMER RIVAL', text:'“The mandate was always the point. Fine. Give me a chair and I will vote with the minutes.”'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'One level of dark remains. The dark pool predates the building. It predates the market. It once saw a portfolio it liked — it waited, and it is ready to wait.'},
+  {t:'battle', id:'kraken', reward:{cash:150, intel:12, cort:2},
+    note:'GAUNTLET 3/3 — the Dark Pool Kraken. You cannot see it. It can see your funds.'},
+  {t:'say', who:'ELEVATOR (OBSERVATIONAL)', text:'“The Boardroom is one floor up. The air is already different up there: colder, calmer, and priced accordingly.”', silh:true}
+], next:()=> 'm5_bullock'};
+
+/* — M5: Bullock, two phases + the script twist — */
+SCENES['m5_bullock']={zone:'— RBA BOARDROOM · THE MANDATES ARE ON THE TABLE —',blocks:[
+  {t:'k', x:'M5 · THE FINAL FIGHT · PHASE ONE'},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“You have been rehearsing for this in corridor conversations and press-room shoulders. I have been reading the budget. Yours is coherent. That is the alarming part.”'},
+  {t:'battle', id:'bullock_p1', reward:{cash:0, intel:0, cort:2},
+    note:'PHASE ONE — she spends your cash to fund her turn order. Defend the ledger, then change it.'},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“Phase one concluded. Historic verdict pending. Office holders have a way of bending history around their own appointments. Choose your angle: the deal, the audit, or the helicopter.”'},
+  {t:'choice', prompt:'THE SCRIPT TWIST — how does the summit end?',
+    options:[
+      {x:'Offer her THE ACCORD — both keys turned together.', set:'summit_offer', goto:'m5_test', note:'Two mandates, one aligned budget. The plot, structurally.'},
+      {x:'Crush. The doubters become headcounts.', set:'summit_crush', goto:'m5_crush', note:'The Iron Ledger ending lives here.'},
+      {x:'Helicopter money. Everything everywhere all at once.', set:'summit_heli', goto:'m5_heli', note:'Chaos meme ending. Yours. Own it.'}
+    ]}
+], next:()=> 'hub'};
+
+/* — summit test: Bullock fights to hear whether THE ACCORD holds — */
+SCENES['m5_test']={zone:'— RBA BOARDROOM · PHASE TWO · THE ACCORD HOLDING PATTERN —',blocks:[
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“Then show me the Accord can hold a live rate-rise while both of you keep talking. If it wobbles, the mandate stays mine.”'},
+  {t:'battle', id:'bullock_p2', reward:{cash:200, intel:12, cort:0},
+    note:'PHASE TWO — not malice; a stress test at full rate. Hold the line.'},
+  {t:'mandate', which:'money'},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“The Accord holds. Signed at the table by the only two people still holding the pens.”'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* — summit crush: the Iron Ledger — */
+SCENES['m5_crush']={zone:'— RBA BOARDROOM · PHASE TWO · THE SHEET DOES NOT BALANCE —',blocks:[
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“You want the mandates without the mandatee. Every second Treasurer has asked. Perhaps you will be the first to notice what that costs.”'},
+  {t:'battle', id:'bullock_p2', reward:{cash:200, intel:12, cort:2},
+    note:'PHASE TWO — she fights like the institution she is: forever, and literally.'},
+  {t:'mandate', which:'money'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* — summit heli: chaotic neutral — */
+SCENES['m5_heli']={zone:'— RBA BOARDROOM · FORWARD GUIDANCE UNBOUND —',blocks:[
+  {t:'say', who:'THE ROTORS (ABOVE THE TABLE)', text:'Helicopter. Not one helicopter. A fleet. Each one is a wish with rotors — and the wish, inconveniently, is funded.', silh:true},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“No. Do not …”'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* — verdict replay from the hub after the game ends — */
+SCENES['m5_verdict']={zone:'— MARTIN PLACE · THE BUILDING STILL HUMS —',blocks:[
+  {t:'k', x:'THE FINAL VERDICT — REPLAY'},
+  {t:'endgame'}
 ], next:()=> 'hub'};
 
 /* hub: shared room between chapters; menu built dynamically (see buildHubOptions) */
@@ -1039,11 +1257,14 @@ function freshState(pcid){
     mood:'CALM',
     deckPos:0,
     scene:null, block:0,
-    log:[], muted:false
+    log:[], muted:false,
+    mpSeats:[],    /* multiplayer: character ids controlled by human players */
+    mpNames:{}     /* multiplayer: character id → player display name */
   };
 }
 
 function save(silent){
+  if(NET.role==='client') return;   /* clients never write state; they mirror it */
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify(G));
     if(!silent){
@@ -1051,6 +1272,8 @@ function save(silent){
       document.body.appendChild(c); setTimeout(()=>c.remove(),2000);
     }
   }catch(e){}
+  try{ document.body._lastSaveCash=G.cash; }catch(_){}
+  NET.syncG();
 }
 function loadSave(){
   try{
@@ -1082,6 +1305,7 @@ function beep(kind){
     else if(kind==='intel'){ type='sine'; f=660; dur=.1; glide=[660,880]; }
     else if(kind==='cort'){ type='sawtooth'; f=180; dur=.14; }
     else if(kind==='bad'){ type='sawtooth'; f=110; dur=.2; vol=.04; }
+    else if(kind==='hit'){ type='triangle'; f=300; dur=.06; }
     else if(kind==='tick'){ f=520; dur=.05; }
     else if(kind==='stamp'){ type='square'; f=140; dur=.25; vol=.05; }
     o.type=type;
@@ -1095,6 +1319,7 @@ function beep(kind){
 
 /* — toasts & resource application — */
 function toast(x,cls){
+  if(NET.role==='host'&&NET.started) NET.bcast({t:'toast', x, cls:cls||''});
   const d=document.createElement('div');
   d.className='toast '+(cls||''); d.textContent=x;
   $('toasts').appendChild(d);
@@ -1125,6 +1350,9 @@ function advanceMilestone(m,phase,phaseName,sub){
     (sub? '\n'+sub : '');
   renderHUD();
   openOv('mstone');
+  /* multiplayer: the crew sees the same card on their screens */
+  if(NET.role==='host'&&NET.started)
+    NET.beat({t:'ms', m:m||'M?', phase, phaseName, sub:sub||''});
   /* P3 market deck: draws fire at milestones from M1 onward (the prologue
      stays readable with CALM baseline; deck order is tweakable in TWEAK) */
   if(m && m!=='M0') drawEventCard('milestone '+m);
@@ -1134,9 +1362,9 @@ function unlockZones(m,p){
   const map={
     M1:['b4_tower','hedge_fund','the_terminal','newsroom'],
     M2:['backrooms','coal_pent'],
-    M3:['parliament','press_club','treasury'],
-    M4:['qantas_lounge'],   /* fly north with the fiscal mandate in hand */
-    M5:['rba_vault']
+    M3:['qantas_lounge','parliament','press_club','treasury'],
+    M4:['rba_vault'],   /* the vault opens once the fiscal mandate is won */
+    M5:[]
   };
   (map[m]||UNLOCK_BY_PHASE[p]||[]).forEach(z=>{
     if(!G.zones.unlocked.includes(z)) G.zones.unlocked.push(z);
@@ -1145,8 +1373,8 @@ function unlockZones(m,p){
 const UNLOCK_BY_PHASE={
   2:['b4_tower','hedge_fund','the_terminal','newsroom'],
   3:['backrooms','coal_pent'],
-  4:['qantas_lounge','parliament','press_club','treasury'],
-  5:['rba_vault']
+  4:['rba_vault'],
+  5:[]
 };
 /* ===P3: the market deck reacts to milestones and zone visits === */
 function drawEventCard(reason){
@@ -1179,6 +1407,9 @@ function drawEventCard(reason){
   log('MOOD '+prevMood+'→'+G.mood+' · shop×'+m.shop+' sell$'+m.sell);
   beep('intel');
   renderHUD(); save(true);
+  if(NET.role==='host'&&NET.started)
+    NET.bcast({t:'ev', name:ev.name, mood:G.mood, d:ev.d,
+      fx:$('evFx').innerHTML});
   openOv('evov');
 }
 
@@ -1268,6 +1499,9 @@ function renderHUD(){
   b.textContent='ROSTER '+G.party.length+(G.bench.length? ' · BENCH '+G.bench.length:'');
   pt.appendChild(b);
   renderOps();
+  /* multiplayer: keep the crew's HUD close to the truth mid-battle too
+     (the 120ms debounce batches this instead of spamming the wire) */
+  if(NET.role==='host'&&NET.started) NET.syncG();
 }
 
 /* — side ops panel: zones + party kit + log — */
@@ -1303,6 +1537,7 @@ function renderOps(){
 }
 
 function visitZone(zk){
+  if(!NET.uiGate()) return;
   const scene=ZSCENES[zk];
   if(!scene){
     toast(ZONES[zk].name+' — arrives with a later phase','intel'); beep('intel'); return;
@@ -1335,6 +1570,11 @@ function renderScene(){
   kick.textContent= sc ? (typeof sc.zone==='function'? sc.zone(): sc.zone) : '—';
   st.appendChild(kick);
   R.beats=0;
+  /* multiplayer: a fresh scene — reset the replay buffer and sync zone */
+  if(NET.role==='host'&&NET.started){
+    NET.replay=[{t:'scene', zone:kick.textContent}];
+    NET.bcast({t:'scene', zone:kick.textContent});
+  }
   /* replay already-passed blocks? No — from load mid-scene we resume at saved index */
   runBlock();
 }
@@ -1364,8 +1604,12 @@ function buildHubOptions(){
   ];
   if(!G.mile.M1)       o.push({x:'Continue story → The Big Four Tower lobby', goto:'m1_lobby'});
   else if(!G.mile.M2)  o.push({x:'Continue story → Follow the Money (Shadow Board)', goto:'m2_infilt'});
-  else if(!G.mile.M3)  o.push({x:'Continue story → Fly North, Canberra', goto:'m3_teaser'});
-  else                 o.push({x:'Nothing to continue — the world exhales', toast:'ALL CHAPTERS CAUGHT UP'});
+  else if(!G.mile.M3)  o.push({x:'Continue story → Fly North, Canberra', goto:'m3_flynorth'});
+  else if(!F('parliament_done'))
+                       o.push({x:'Continue story → Parliament House (Question Time)', goto:'zs_parliament'});
+  else if(!G.mile.M4)  o.push({x:'Continue story → Treasury basement — the fiscal dungeon', goto:'zs_treasury'});
+  else if(!G.mile.M5)  o.push({x:'Continue story → RBA ACCORD SUMMIT — the gauntlet & the Governor', goto:'m5_gauntlet'});
+  else                 o.push({x:'The verdict — read it again, forever', goto:'m5_verdict'});
   return o;
 }
 
@@ -1380,7 +1624,22 @@ function runBlock(){
     case 'flagOnce': if(b.set && !F(b.set)){ setF(b.set,b.val); if(b.note) toast('⚑ first: '+b.note,''); }
                      else if(b.note) toast('⚑ '+b.note+' (already logged)','');
                      advance(); return;
+    case 'mandate': {   /* P4: mandate grant + THE ACCORD unlocks at M4 */
+      if(b.which && !G.mandates[b.which]){
+        G.mandates[b.which]=true;
+        beep('stamp');
+        toast((b.which==='fiscal'? 'FISCAL':'MONETARY')+' MANDATE — SEIZED','intel');
+        log('MANDATE WON: '+b.which);
+      }
+      if(b.accord && !F('accord_unlocked')){
+        setF('accord_unlocked',true);
+        toast('🎓 THE ACCORD is learned by all (MP 0, ultimate)','intel');
+        log('THE ACCORD unlocked');
+      }
+      renderHUD(); advance(); return;
+    }
     case 'mile':  advance(); advanceMilestone(b.id,b.phase,b.phaseName,b.sub); return;
+    case 'endgame': showEnding(computeVerdict()); return;
     default:      renderVisible(b); return;
   }
 }
@@ -1442,10 +1701,28 @@ function renderVisible(b){
     if(n<3) w.insertAdjacentHTML('beforeend',
       '<div class="activity" style="text-align:center;color:var(--dim)">PURPLE DOOR · '+(3-n)+' VISIT'+(3-n===1?'':'S')+' REMAIN</div>');
     else toast('🟣 A SECRET WAS ACKNOWLEDGED','intel');
+    if(n>=3){
+      setF('made_secret',true); log('MADE sticker earned');
+      /* the secret optional recruit: one unclaimed face emerges from the purple door */
+      const rid=ROSTER.find(id=> id && id!==G.pc && !G.party.includes(id) && !G.bench.includes(id));
+      if(rid){
+        joinChar(rid);
+        addDialogue({who:CHARS[rid].name, pid:rid,
+          text:'“I was behind the door the whole time. MAKED me wait. Do not ask what it costs; it does not cost, it only counts.”'});
+        log('SECRET RECRUIT via the purple door: '+CHARS[rid].name);
+      } else {
+        addDialogue({who:'THE HALLWAY', text:'“Everyone you had is here. The door is sad, briefly, and then it is a door.”'});
+      }
+    }
     log('MADE: purple door visit #'+n);
-    const ok=document.createElement('button'); ok.textContent='CLOSE THE DOOR';
-    ok.onclick=()=>{ beep('intel'); advance(); };
-    w.appendChild(ok);
+    if(NET.role==='host'&&NET.started)
+      NET.beat({t:'made', n, recruit: rid? CHARS[rid].name: null});
+    if(n<3){
+      const ok=document.createElement('button'); ok.textContent='CLOSE THE DOOR';
+      ok.onclick=()=>{ beep('intel'); NET.uiSkip(); };
+      w.appendChild(ok);
+    }
+    /* on visit 3 the dialogue line advances — no double-advance door button */
     st.appendChild(w); st.scrollTop=st.scrollHeight;
     return;
   }
@@ -1461,16 +1738,42 @@ function addAllyChoice(b){
   const pool=(b.pool||[]).filter(id=> id!==G.pc && !G.party.includes(id) && !G.bench.includes(id));
   const st=$('stage');
   retireBeats();
+  /* multiplayer: open join decision — first player to click signs them */
+  if(NET.role==='host'&&NET.started){
+    if(pool.length){
+      NET.CHOICE={kind:'ally', b, pool, open:true};
+      NET.beat({t:'choice', prompt:b.prompt+' (SIGNING)',
+        options:pool.map(id=>({x:'<span style="color:'+CHARS[id].color+'">'+CHARS[id].name+
+          '</span> — '+CHARS[id].style,
+          note:CHARS[id].blurb+' ◆ '+(CHARS[id].sig||[]).join(' · ')}))});
+    } else {
+      NET.CHOICE={kind:'ally', b, pool:[], open:true};
+      NET.beat({t:'choice', prompt:b.prompt,
+        options:[{x:'Everyone’s already on the payroll. Proceed.', note:''}]});
+    }
+  }
   const w=document.createElement('div'); w.className='chwrap';
   const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+b.prompt;
   w.appendChild(pr);
+  if(!pool.length){
+    /* every candidate already rostered/rivalled — don't soft-lock the scene */
+    const n=document.createElement('button'); n.className='chbtn';
+    n.textContent='Everyone’s already on the payroll. Proceed.';
+    n.onclick=()=>{ beep('tick'); NET.CHOICE=null; w.remove(); advance(); };
+    w.appendChild(n);
+    st.appendChild(w); st.scrollTop=st.scrollHeight;
+    return;
+  }
   pool.forEach((id,i)=>{
     const c=CHARS[id];
     const btn=document.createElement('button'); btn.className='chbtn';
     btn.innerHTML='<span class="k">'+(i+1)+'.</span> <span style="color:'+c.color+'">'+c.name+
       '</span> — '+c.style+'<small>'+c.blurb+' ◆ '+(c.sig||[]).join(' · ')+'</small>';
     btn.onclick=()=>{
-      beep('coin'); w.remove();
+      beep('coin');
+      if(NET.role==='client'){ NET.send({t:'pick', idx:i}); return; }
+      NET.CHOICE=null;
+      w.remove();
       joinChar(id);
       if(b.say) addDialogue({who:c.name, pid:id, text:b.say});
     };
@@ -1487,6 +1790,7 @@ function endOfScene(sc){
 }
 
 function addKicker(x){
+  if(NET.role==='host'&&NET.started) NET.beat({t:'k', x});
   const st=$('stage');
   const d=document.createElement('div');
   d.className='beat kicker'; d.textContent=x;
@@ -1504,10 +1808,12 @@ function retireBeats(){
 }
 
 function addDialogue(b){
+  if(NET.role==='host'&&NET.started)
+    NET.beat({t:'say', who:b.who, pid:b.pid||null, text:b.text, silh:!!b.silh});
   retireBeats();
   const st=$('stage');
   const d=document.createElement('div'); d.className='dline';
-  d.appendChild(sayPortrait(b.pid, b.who==='YOU' || (G&&b.pid===G.pc)));
+  d.appendChild(sayPortrait(b.pid, (b.who==='YOU')||(G&&b.pid===G.pc)||(NET.role==='client'&&b.pid===NET.selfPc)));
   const body=document.createElement('div'); body.className='dbody';
   const who=document.createElement('div'); who.className='dwho';
   who.textContent=(b.silh?'📢 ':'')+b.who;
@@ -1516,7 +1822,7 @@ function addDialogue(b){
   txt.innerHTML=b.text;
   body.appendChild(txt);
   d.appendChild(body);
-  d.onclick=()=>{ beep('tick'); advance(); };
+  d.onclick=()=>{ beep('tick'); NET.uiSkip(); };
   st.appendChild(d);
   const a=document.createElement('div'); a.className='adv'; a.textContent='─ CLICK / SPACE ─';
   st.appendChild(a);
@@ -1524,8 +1830,35 @@ function addDialogue(b){
 }
 
 function joinChar(id){
-  const ch=CHARS[id]; if(!ch || G.party.includes(id)) return;
-  if(G.party.length<4) G.party.push(id); else G.bench.push(id);
+  const ch=CHARS[id]; if(!ch || G.party.includes(id) || G.bench.includes(id)) return;
+  try{ (window.__joinLog=window.__joinLog||[]).push(id+'@party'+G.party.length+
+    ' seats='+JSON.stringify(G.mpSeats||[])+' swmax='+maxStats(id).maxhp); }catch(e){}
+  const mp=(NET.role==='host'&&NET.started);
+  if(G.party.length<4){
+    G.party.push(id);
+  }else if(mp){
+    /* multiplayer: seats fill two of the four slots, so strong recruits
+       overflow to the bench early. Auto-win the trade for the crew: bench
+       the weakest NON-seat member if the newcomer out-halves them.
+       (Solo keeps its original fill order — this branch never runs there.) */
+    const seats=G.mpSeats||[];
+    let weakIdx=-1, weakHp=Infinity;
+    G.party.forEach((pid,i)=>{
+      if(seats.includes(pid)) return;
+      const mh=maxStats(pid).maxhp;
+      if(mh<weakHp){ weakHp=mh; weakIdx=i; }
+    });
+    if(weakIdx>=0 && maxStats(id).maxhp>weakHp){
+      const outId=G.party[weakIdx];
+      G.bench.push(outId);
+      G.party[weakIdx]=id;
+      try{ window.__joinLog.push('SWAP '+id+' in, '+outId+' out'); }catch(e){}
+      toast('⇄ ROSTER SWING: '+ch.name+' suits up, '+CHARS[outId].name+' warms the bench (host can reshuffle)','intel');
+    }else{
+      G.bench.push(id);
+      try{ window.__joinLog.push('NO-SWAP '+id+' to bench (weakHp='+weakHp+')'); }catch(e){}
+    }
+  }else G.bench.push(id);
   ensurePartyStats();  /* seed fresh hp/mp for the newcomer */
   log('JOINED: '+ch.name);
   toast('＋ '+ch.name+' joins','intel'); beep('coin');
@@ -1536,6 +1869,12 @@ function addChoice(b){
   retireBeats();
   const st=$('stage');
   document.querySelectorAll('#stage .adv').forEach(e=>e.remove());
+  /* multiplayer: record the open choice so any player's click resolves it */
+  if(NET.role==='host'&&NET.started){
+    NET.CHOICE={kind:'choice', b, open:true};
+    NET.beat({t:'choice', prompt:b.prompt,
+      options:b.options.map(o=>({x:o.x, note:o.note||''}))});
+  }
   const w=document.createElement('div'); w.className='chwrap';
   const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+b.prompt;
   w.appendChild(pr);
@@ -1544,12 +1883,10 @@ function addChoice(b){
     btn.innerHTML='<span class="k">'+(i+1)+'.</span> '+o.x+(o.note?'<small>'+o.note+'</small>':'');
     btn.onclick=()=>{
       beep('tick');
-      if(o.set) setF(o.set,true);
+      if(NET.role==='client'){ NET.send({t:'pick', idx:i}); return; }
+      NET.CHOICE=null;
       w.remove();
-      if(o.goto){ log('CHOICE: '+o.x); gotoScene(o.goto); return; }
-      if(o.panel){ log('PANEL: '+o.panel); openStub(o.panel); advance(); return; }
-      log('CHOICE: '+o.x);
-      advance();
+      NET.execChoice(o);
     };
     w.appendChild(btn);
   });
@@ -1588,7 +1925,13 @@ function maxStats(id){
 }
 function charKit(id){
   const lv=charLevel(), kit=KITS[id]||[];
-  return kit.slice(0, Math.min(kit.length, 1+Math.ceil(lv/2))).map(s=>SKILLS[s]).filter(Boolean);
+  const own=kit.slice(0, Math.min(kit.length, 1+Math.ceil(lv/2)));
+  /* shared policy spells: learned at the Fiscal Mandate, incl. THE ACCORD */
+  const shared= hasF('accord_unlocked')? ['budget_leak','fiscal_mult','hedge_all','accord'] : [];
+  return own.concat(shared).filter(k=>SKILLS[k]).map(k=>{
+    const s=SKILLS[k];
+    return {...s, id:k, name:s.n, cost:s.mp};   /* menu/SKILL_FX read these */
+  });
 }
 
 /* --- statuses --- */
@@ -1656,7 +1999,12 @@ function beginBattle(b, box){
     b, team, foes, round:0, q:[], qi:0, log:[], over:false, win:false,
     rewards: b.reward||{}, reveal:false, summoned:0, box
   };
+  /* qi starts at −1: nextTurn() advances first, so q[0] (highest AGI) acts */
   BATTLE.q=[...team,...foes].sort((a,z)=>eff(z).agi-eff(a).agi);
+  BATTLE.qi=-1;
+  /* Bullock phase two: Yield Curve Control — every skill costs +1 MP */
+  BATTLE.ycc=(b.id==='bullock_p2');
+  if(BATTLE.ycc) battleBeat('YIELD CURVE CONTROL — the curve is pinned. All skills cost +1 MP this fight.');
   if(BF_DOSSIER){ BATTLE.reveal=true; BF_DOSSIER=false; battleBeat('DOSSIER OPEN — statlines on record.'); }
   if(MOOD_OPEN){ battleBeat(MOOD_OPEN); MOOD_OPEN=null; }
   /* cortisol pre-fight: Shaken start at threshold */
@@ -1668,6 +2016,8 @@ function beginBattle(b, box){
 function battleBeat(msg){
   if(BATTLE) { BATTLE.log.push(msg); if(BATTLE.log.length>60) BATTLE.log.shift(); }
   renderBattle();
+  /* crew: battle mutations (drains, weeds, cash shakedowns) sync here too */
+  NET.syncG();
 }
 function renderBattle(){
   const w=BATTLE&&BATTLE.box;
@@ -1688,6 +2038,8 @@ function renderBattle(){
   html+='<div class="fine" style="white-space:pre-line;margin-top:6px">'+
     BATTLE.log.slice(-6).join('\n')+'</div>';
   w.innerHTML=html;
+  /* multiplayer: sync the fight panel to the crew */
+  if(NET.role==='host'&&NET.started) NET.syncBox(html);
 }
 
 /* --- damage application --- */
@@ -1712,15 +2064,6 @@ function pickFoeTarget(){
   if(locked) return locked;
   const pool=teamAlive();
   return pool.sort((a,z)=>a.hp/a.maxhp - z.hp/z.maxhp)[0];
-}
-function windup(u){ /* upkeep at each unit's turn */
-  u.statuses.forEach(s=>{
-    if(s.k==='wound') hitFoeDot(u,s);
-  });
-  u.statuses=u.statuses.filter(s=>{
-    if(s.k==='regen') healUnit(u,s.v);
-    return --s.t>0;
-  });
 }
 function hitFoeDot(f,s){
   if(f.down) return;
@@ -1766,7 +2109,7 @@ function applyFx(actor, target, def, label){
     case 'charm': if(!target.down){ addStatus(target,{k:'charmed', t:2, name:'CHARMED'}); battleBeat(target.name+' is charmed — someone else’s agenda now.'); } break;
     case 'confuse': if(!target.down){ addStatus(target,{k:'skip', t:2, name:'CONFUSED'}); battleBeat(target.name+' loses the plot.'); } break;
     case 'reveal': BATTLE.reveal=true; battleBeat('The dossier is open — statlines exposed.'); break;
-    case 'cort': G.cort=Math.max(0,Math.min(9,G.cort+pw)); battleBeat('Cortisol '+(pw>0?'+':'')+pw+'.'); break;
+    case 'cort': G.cort=Math.max(0,Math.min(9,G.cort+pw)); battleBeat('Cortisol '+(pw>0?'+':'')+pw+'.'); renderHUD(); break;
     case 'wildcard': {
       const roll=DICE_TABLE[Math.floor(Math.random()*DICE_TABLE.length)];
       battleBeat('🎲 '+roll.label+'!'); applyFx(actor, target, roll, roll.label); break; }
@@ -1798,6 +2141,16 @@ function foeTurn(f){
   const move=FOE_MOVES[mv.skill]||FOE_MOVES.heavy;
   const a=eff(f);
   const vsParty=(t,p)=>hitParty(t, Math.max(1, Math.round(a.atk*p*rollVar() - eff(t).def*TUNING.defCoef)), f.name);
+  /* Bullock signature: lifts party cash mid-fight and spends it on herself */
+  if(mv.skill==='cashrate'){
+    const t=pickFoeTarget();
+    vsParty(t, move.pw);
+    const drain=Math.min(G.cash||0, 15);
+    if(drain>0){ G.cash-=drain; f.atk+=1; renderHUD(); }
+    battleBeat('CASH RATE HIKE — '+t.name+' takes the hit'+(drain>0?
+      ' and she lifts $'+drain+' straight off the table (ATK raised).':' (no cash left to lift).'));
+    return;
+  }
   if(move.status==='audited'){
     const t=pickFoeTarget();
     vsParty(t, move.pw);
@@ -1814,112 +2167,139 @@ function foeTurn(f){
   }
 }
 
-/* --- party turn menus --- */
-function partyTurn(u){
+/* --- party turn menus ---
+   Menus are built once as data (menuOpen) and resolved once (menuDo), so the
+   same flow serves solo play, the host, and remote players' clients via
+   broadcast payloads. */
+let MENU_SEQ=0;
+function menuOpen(kind,u,prompt,opts){
   retireBeats();
+  MENU_SEQ++;
+  NET.MENU={kind, uid:u.id, seq:MENU_SEQ, fns:opts.map(o=>o.fn), u};
+  /* broadcast first so remote players can act while the host renders */
+  if(NET.role==='host'&&NET.started)
+    NET.bcast({t:'menu', seq:MENU_SEQ, kind, uid:u.id, prompt,
+      opts:opts.map(o=>({k0:o.k0, x:o.x, sub:o.sub||'', dis:!!o.dis, mpc:o.mpc, rhp:o.rhp||''}))});
+  const st=$('stage');
+  /* whose move is this? remote player units show a waiter line on the host,
+     and non-owner clients get a waiter line from recv(). */
+  const owner=(NET.role==='host'&&NET.started)? NET.ownerOf(u.id): null;
+  const mine=!owner || !owner.conn;   /* host keeps control of NPCs + own PC */
   const w=document.createElement('div'); w.className='chwrap';
   const pr=document.createElement('div'); pr.className='chprompt';
-  pr.textContent='⚔ '+u.name+': HP '+u.hp+'/'+u.maxhp+' · MP '+u.mp+' — your move:';
-  w.appendChild(pr);
+  if(!mine){
+    pr.textContent='⏳ '+(owner? owner.name: '')+' is deciding their move…';
+    w.appendChild(pr); st.appendChild(w); st.scrollTop=st.scrollHeight; return;
+  }
+  pr.textContent=prompt; w.appendChild(pr);
+  opts.forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    if(o.dis) btn.disabled=true;
+    btn.innerHTML='<span class="k">'+o.k0+'</span> '+o.x+
+      (o.mpc!=null? ' <span class="hp">MP '+o.mpc+'</span>':'')+
+      (o.rhp? ' <span class="hp">HP '+o.rhp+'</span>':'')+
+      (o.sub? '<small>'+o.sub+'</small>':'');
+    btn.onclick=()=>{
+      if(o.dis){ toast('NOT ENOUGH MP'+(BATTLE&&BATTLE.ycc? ' (curve is pinned: +1)':''),'bad'); beep('bad'); return; }
+      beep(o.b||'tick');
+      if(NET.role==='client'){ NET.send({t:'menuPick', seq:MENU_SEQ, idx:i}); return; }
+      w.remove(); menuDo(kind,u,i);
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+}
+function menuDo(kind,u,i){
+  const ctx=NET.MENU;
+  if(!ctx || ctx.kind!==kind || ctx.uid!==u.id) return;   /* stale click */
+  NET.MENU=null;
+  const fn=ctx.fns[i];
+  if(fn) fn();
+}
+function partyTurn(u){
+  retireBeats();
   const opts=[
-    {x:'Attack', fn:()=>menuTarget(u)},
+    {k0:'1.', x:'Attack', fn:()=>menuTarget(u)},
   ];
-  if(u.kit.length) opts.push({x:'Skill', fn:()=>menuSkill(u)});
-  if(Object.values(G.items||{}).some(c=>c>0)) opts.push({x:'Item', fn:()=>menuItem(u)});
-  opts.push({x:'Defend — brace, halve next hit', fn:()=>{
+  if(u.kit.length) opts.push({k0:(opts.length+1)+'.', x:'Skill', fn:()=>menuSkill(u)});
+  if(Object.values(G.items||{}).some(c=>c>0)) opts.push({k0:(opts.length+1)+'.', x:'Item', fn:()=>menuItem(u)});
+  opts.push({k0:(opts.length+1)+'.', x:'Defend — brace, halve next hit', fn:()=>{
     addStatus(u,{k:'defbuff', v:Math.round(u.def*0.5+2), t:1, name:'BRACED'});
     battleBeat(u.name+' braces.'); nextTurn();
   }});
-  opts.push({x:'Flake out — burn 1🛈 for a free pass', fn:()=>{
+  opts.push({k0:(opts.length+1)+'.', x:'Flake out — burn 1🛈 for a free pass', fn:()=>{
     if(G.intel>0){ G.intel--; battleBeat(u.name+' outsources this turn to a contractor.'); renderHUD(); }
     else battleBeat('No intel left to burn. The contractor ghosts.');
     nextTurn();
   }});
-  opts.forEach((o,i)=>{
-    const btn=document.createElement('button'); btn.className='chbtn';
-    btn.innerHTML='<span class="k">'+(i+1)+'.</span> '+o.x;
-    btn.onclick=()=>{ beep('tick'); w.remove(); o.fn(); };
-    w.appendChild(btn);
-  });
-  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
-}
-function menuTarget(u,useSkill,tgt){
-  retireBeats();
-  const w=document.createElement('div'); w.className='chwrap';
-  const pr=document.createElement('div'); pr.className='chprompt';
-  pr.textContent=(useSkill? SKILLS[useSkill].name: 'Attack')+' → target?';
-  w.appendChild(pr);
-  BATTLE.foes.filter(f=>!f.down).forEach(f=>{
-    const btn=document.createElement('button'); btn.className='chbtn';
-    btn.innerHTML='<span class="k">▸</span> '+f.emoji+' '+f.name+' <span class="hp">'+
-      (BATTLE.reveal? 'HP '+f.hp+'/'+f.maxhp:'')+'</span>';
-    btn.onclick=()=>{
-      beep('hit'); w.remove();
-      if(useSkill){ castSkill(u, SKILLS[useSkill], f); }
+  menuOpen('party', u, '⚔ '+u.name+': HP '+u.hp+'/'+u.maxhp+' · MP '+u.mp+' — your move:', opts);
+}function menuTarget(u,useSkill){
+  const foes=BATTLE.foes.filter(f=>!f.down);
+  const opts=foes.map(f=>({k0:'▸', x:f.emoji+' '+f.name,
+    rhp:(BATTLE.reveal? f.hp+'/'+f.maxhp:''),
+    fn:()=>{
+      beep('hit');
+      if(useSkill){ castSkill(u, useSkill, f); }
       else { const {v,crit}=rollDamage(u,f,1); hitFoe(f,v,crit,u.name); nextTurn(); }
-    };
-    w.appendChild(btn);
-  });
-  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+    }}));
+  if(useSkill){
+    opts.push({k0:'←', x:'Back — rethink this holiday', fn:()=>partyTurn(u)});
+  }
+  menuOpen('target', u, (useSkill? SKILLS[useSkill].name: 'Attack')+' → target?', opts);
 }
 function menuSkill(u){
-  retireBeats();
-  const w=document.createElement('div'); w.className='chwrap';
-  const pr=document.createElement('div'); pr.className='chprompt';
-  pr.textContent='⚔ '+u.name+' — which skill?';
-  w.appendChild(pr);
-  u.kit.forEach(sk=>{
-    const c=sk.cost||0;
-    const btn=document.createElement('button'); btn.className='chbtn';
-    btn.disabled=(u.mp<c);
-    btn.innerHTML='<span class="k">▸</span> '+sk.name+' <span class="hp">MP '+c+
-      '</span><small>'+(sk.d||'')+'</small>';
-    btn.onclick=()=>{
-      if(u.mp<c){ toast('NOT ENOUGH MP','bad'); return; }
-      beep('intel'); w.remove(); u.mp-=c;
-      const fx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
-      if(['dmg','atkdown','dot','skipfoe','charm','confuse'].includes(fx.fx)){
-        menuTarget(u, sk.id);
-      } else {
-        battleBeat(u.name+' uses '+sk.name+'!');
-        applyFx(u, pickFoeTarget(), fx, sk.name); nextTurn();
-      }
-    };
-    w.appendChild(btn);
+  const opts=u.kit.map(sk=>{
+    const c=(sk.cost||0)+(BATTLE && BATTLE.ycc? 1:0);
+    const sfx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
+    /* ♥ marks heal/revive skills — read by QA pilots and human eyes alike */
+    return {k0:(/heal|revive/.test(sfx.fx)? '♥':'▸'), x:sk.name, mpc:c, sub:(sk.d||''), dis:(u.mp<c),
+      fn:()=>{
+        if(u.mp<c){ toast('NOT ENOUGH MP'+(BATTLE&&BATTLE.ycc? ' (curve is pinned: +1)':''),'bad'); return; }
+        beep('intel'); u.mp-=c;
+        if(['dmg','atkdown','dot','skipfoe','charm','confuse'].includes(sfx.fx)){
+          menuTarget(u, sk.id);
+        } else {
+          battleBeat(u.name+' uses '+sk.name+'!');
+          applyFx(u, pickFoeTarget(), sfx, sk.name); nextTurn();
+        }
+      }};
   });
-  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+  opts.push({k0:'←', x:'Back — the MP ledger caught us', fn:()=>partyTurn(u)});
+  menuOpen('skill', u, '⚔ '+u.name+' — which skill?', opts);
 }
-function castSkill(u,sk,target){
+function castSkill(u, skid, target){
+  const s=SKILLS[skid]; if(!s) return;
+  const sk={...s, id:skid, name:s.n, cost:s.mp};
   const fx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
   battleBeat(u.name+' uses '+sk.name+'!');
   applyFx(u, target, fx, sk.name);
   nextTurn();
 }
 function menuItem(u){
-  retireBeats();
-  const w=document.createElement('div'); w.className='chwrap';
-  const pr=document.createElement('div'); pr.className='chprompt';
-  pr.textContent='⚔ '+u.name+' — use which item?';
-  w.appendChild(pr);
-  Object.entries(G.items||{}).filter(([,c])=>c>0).forEach(([iid])=>{
-    const it=ITEMS[iid]; if(!it) return;
-    const btn=document.createElement('button'); btn.className='chbtn';
-    btn.innerHTML='<span class="k">▸</span> '+(it.emoji||'')+' '+it.name+
-      ' ×'+G.items[iid]+(it.heal? ' <span class="k">+'+it.heal+' HPV</span>':'')+
-      (it.cleanse? ' · cleanse':'');
-    btn.onclick=()=>{
-      G.items[iid]--; if(G.items[iid]<=0) delete G.items[iid];
-      const h=healUnit(u,(it.heal||15));
-      battleBeat(u.name+' uses '+it.name+' +'+h+' HP.');
-      beep('coin'); w.remove(); nextTurn();
-    };
-    w.appendChild(btn);
-  });
-  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+  const opts=Object.entries(G.items||{}).filter(([,c])=>c>0).map(([iid])=>{
+    const it=ITEMS[iid]; if(!it) return null;
+    return {k0:'▸', x:(it.emoji||'')+' '+it.name+' ×'+G.items[iid],
+      sub:it.heal? '+'+it.heal+' HPV'+(it.cleanse? ' · cleanse':''):'',
+      fn:()=>{
+        G.items[iid]--;
+        if(G.items[iid]<=0) delete G.items[iid];
+        const parts=[];
+        if(it.thp){ const h=healUnit(u,it.thp); parts.push('+'+h+' HP'); }
+        if(it.tmp){ u.mp=Math.min(u.maxmp, u.mp+it.tmp); parts.push('+'+it.tmp+' MP'); }
+        if(it.cort){ G.cort=Math.max(0,Math.min(9,G.cort+it.cort));
+          parts.push((it.cort>0?'+':'')+it.cort+' 🔥'); }
+        if(it.tintel && G.cort>=7){ G.intel+=it.tintel; parts.push('+'+it.tintel+' 🛈'); }
+        battleBeat(u.name+' uses '+it.name+' ('+(parts.join(', ')||'intangibles only')+').');
+        beep('coin'); renderHUD(); nextTurn();
+      }};
+  }).filter(Boolean);
+  opts.push({k0:'←', x:'Back — the pockets can wait', fn:()=>partyTurn(u)});
+  menuOpen('item', u, '⚔ '+u.name+' — use which item?', opts);
 }
 /* --- turn queue --- */
 function nextTurn(){
   renderBattle();
+  NET.syncG();          /* crew: full-state sync at turn boundaries */
   if(!teamAlive().length){ endBattle(false); return; }
   if(!foesAlive().length){ endBattle(true); return; }
   /* advance q to next living unit */
@@ -1950,6 +2330,7 @@ function endBattle(win){
   BATTLE.over=true; BATTLE.win=win;
   BF_BUG=null; MOOD_OPEN=null;   /* per-battle intel effects expire with the fight */
   const box=BATTLE.box; if(box) box.innerHTML='';
+  if(NET.role==='host'&&NET.started) NET.bcast({t:'box', html:''});
   const w=document.createElement('div'); w.className='beat';
   if(win){
     const r=BATTLE.rewards, rh=Math.round((TUNING.ratchet.reward*Math.max(1,G.phase-1)+1)*100)/100;
@@ -1968,22 +2349,33 @@ function endBattle(win){
       Math.round(TUNING.postBattleMP*100)+'% MP. Downed allies rejoin at the medic’s discretion.'+
       (BATTLE.b.note? '<br>'+BATTLE.b.note:'')+'</div>';
   } else {
-    const loss=Math.round(G.cash*TUNING.lossCashPenalty);
+    /* multiplayer: the committee splits the withdrawal tab (half fee) —
+       two players share one supply budget and must not death-spiral */
+    const split=(NET.role==='host'&&NET.started)? 0.5 : 1;
+    const loss=Math.round(G.cash*TUNING.lossCashPenalty*split);
     G.cash-=loss;
     BATTLE.team.forEach(u=>{ u.hp=Math.round(u.maxhp*0.5); u.mp=Math.round(u.maxmp*0.5); u.down=false; });
     persistUnits();
     w.innerHTML='<div style="color:var(--red)">🟥 WITHDRAWAL — the site was not held.</div>'+
-      '<div class="fine">No game over — only fees. −$'+loss+' to “consulting”, and the story continues at the hub. Regroup, restock, and find a better angle. The rival of record will claim they were “basically there”.</div>';
+      '<div class="fine">No game over — only fees. −$'+loss+' to “consulting”'+(split<1?' (the committee split the tab)':'')+
+      ', and the story continues at the hub. Regroup, restock, and find a better angle. The rival of record will claim they were “basically there”.</div>';
     log('RETREAT: '+((ENEMIES[BATTLE.b.id]||{}).name||''));
+    NET.syncG();   /* crew: the fee lands before the CONTINUE click */
   }
+  if(NET.role==='host'&&NET.started)
+    NET.beat({t:'rbeat', html:w.innerHTML, win:!!win});
   const ok=document.createElement('button'); ok.textContent='CONTINUE';
   const won=win;
-  ok.onclick=()=>{
+  const contFn=()=>{
+    if(NET.role==='client'){ NET.send({t:'cont'}); return; }
+    NET.CONT=null;
     beep(won? 'coin':'bad'); renderHUD(); save(true);
     if(R.onBattleDone){ const f=R.onBattleDone; R.onBattleDone=null; f(won); }
     else if(won) advance();
     else gotoScene('hub');
   };
+  NET.CONT=contFn;
+  ok.onclick=contFn;
   w.appendChild(ok);
   $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
   BATTLE=null;
@@ -2010,6 +2402,7 @@ function addBattleStub(b){
     const box=document.createElement('div'); box.className='beat';
     box.style.border='1px solid var(--red)'; box.style.padding='10px'; box.style.margin='8px 0';
     $('stage').appendChild(box);
+    NET.beat({t:'newbox', red:true});
     R.onBattleDone=(raidWin)=>{
       /* raid penalties: regardless of who won the skirmish, the state collects */
       const loss=Math.round(G.cash*TUNING.raid.cash);
@@ -2028,6 +2421,7 @@ function addBattleStub(b){
   const box=document.createElement('div'); box.className='beat';
   box.style.border='1px solid rgba(255,255,255,.15)'; box.style.padding='10px'; box.style.margin='8px 0';
   $('stage').appendChild(box);
+  NET.beat({t:'newbox', red:false});
   /* intel ops consumption + mood openings land here */
   if(hasF('bugNext')){ G.flags.bugNext=false; BF_BUG=0.75; }
   if(hasF('dossierNext')){ G.flags.dossierNext=false; BF_DOSSIER=true; }
@@ -2040,7 +2434,8 @@ function addBattleStub(b){
   beginBattle(b, box);
 }
 /* scripted battle runner (dev/harness): acts[] may use 'attack' (target auto:
-   lowest-HP foe), ['skill', skillId] (target auto), 'item:<id>', 'defend' */
+   lowest-HP% foe), ['skill', skillId] or 'skill:<id>' (target auto),
+   'item:<id>', 'defend' */
 function testBattle(partyIds, eid, acts){
   const savedParty=G.party.slice(), savedScene=R.scene;
   G.party=partyIds.slice();
@@ -2099,14 +2494,16 @@ function testBattle(partyIds, eid, acts){
       if(act==='defend'){ add(cur,{k:'defbuff',v:Math.round(cur.def*0.5+2),t:1}); clog(cur.name+' braces'); }
       else if(String(act).startsWith('item:')){ const it=ITEMS[act.slice(5)];
         healU(cur,(it&&it.heal)||15); clog(cur.name+' uses item +'+((it&&it.heal)||15)); }
-      else if(act[0]==='skill'){
-        const sk=SKILLS[act[1]];
-        if(!sk){ clog('unknown skill'); continue; }
+      else if(Array.isArray(act) ? act[0]==='skill' : act.startsWith('skill:')){
+        const k=Array.isArray(act)? act[1] : act.slice(6);
+        const s=SKILLS[k];
+        if(!s){ clog('unknown skill'); continue; }
+        const sk={...s, id:k, name:s.n, cost:s.mp};
         cur.mp=Math.max(0,cur.mp-(sk.cost||0));
         const t=aliveF().sort((a,z)=>a.hp-a.maxhp)[0]||foes[0];
         applyFxMock(cur,t,sk,out,rollD,dmgF,add,stat,aliveF,team,foes);
       }
-      else { const t=aliveF().sort((a,z)=>a.hp-a.maxhp-z.hp)[0];
+      else { const t=aliveF().sort((a,z)=>a.hp/a.maxhp - z.hp/z.maxhp)[0]||foes[0];
         const {v,crit}=rollD(cur,t,1); dmgF(t,v,crit,cur.name); }
     }
   }
@@ -2156,6 +2553,77 @@ function applyFxMock(actor,target,sk,out,rollD,dmgF,add,stat,aliveF,team,foes){
 /* ============================================================
    UI — stub panels: shop / swap / ops / backrooms (real panels P1+)
    ============================================================ */
+/* apply a usable item between scenes: heal → lowest-HP active, MP → lowest-MP active,
+   cortisol → global ledger, intel → only reads when the party is on edge */
+function useItem(id){
+  const it=ITEMS[id]; if(!it || !(G.items[id]>0)) return;
+  G.items[id]--; if(G.items[id]<=0) delete G.items[id];
+  const lowestHp=()=> G.party
+    .map(u=>({id:u, gap: maxStats(u).maxhp-(G.st[u]||{hp:0}).hp}))
+    .sort((a,b)=>b.gap-a.gap)[0];
+  const parts=[];
+  if(it.thp){
+    const t=lowestHp();
+    if(t){ const gap=Math.min(it.thp, t.gap);
+      G.st[t.id].hp=Math.min(maxStats(t.id).maxhp, (G.st[t.id]||{hp:0}).hp+gap);
+      parts.push(CHARS[t.id].name+' +'+gap+' HP'); }
+  }
+  if(it.tmp){
+    const t=G.party.slice().sort((a,b)=>((G.st[a]||{mp:0}).mp/maxStats(a).maxmp)-((G.st[b]||{mp:0}).mp/maxStats(b).maxmp))[0];
+    if(t){ const before=(G.st[t]||{mp:0}).mp;
+      G.st[t]=G.st[t]||{hp:maxStats(t).maxhp, mp:0};
+      G.st[t].mp=Math.min(maxStats(t).maxmp, G.st[t].mp+it.tmp);
+      parts.push(CHARS[t].name+' +'+(G.st[t].mp-before)+' MP'); }
+  }
+  if(it.cort){ G.cort=Math.max(0,Math.min(9,G.cort+it.cort));
+    parts.push((it.cort>0?'+':'')+it.cort+' 🔥'); }
+  if(it.tintel && G.cort>=CORT.shaken){ G.intel+=it.tintel; parts.push('+'+it.tintel+' 🛈 (the lawyer smelled cortisol)'); }
+  const em=(it.emoji||'')+' USED '+it.name;
+  if(parts.length) toast(em+' — '+parts.join(', '),'intel'); else toast(em+' — felt nice anyway','intel');
+  beep('coin');
+}
+/* ============================================================
+   [6.5] VERDICT — endings scored per plan §4
+   1 The Second Accord 2 The Uneasy Truce 3 The Iron Ledger
+   4 Helicopter Money (+ MADE sticker)
+   ============================================================ */
+function computeVerdict(){
+  const both=G.mandates.fiscal&&G.mandates.money;
+  if(hasF('summit_heli')) return 'heli';
+  if(both && hasF('summit_offer')) return 'second';
+  if(both && hasF('summit_crush')) return 'iron';
+  return 'truce';
+}
+function showEnding(key){
+  const fam=ENDINGS[key]||ENDINGS.truce;
+  const made=F('made_secret');
+  /* score per plan: mandates, cortisol, cash, intel, roster, choices, MADE */
+  const both=G.mandates.fiscal&&G.mandates.money;
+  const pts=(G.mandates.fiscal?20:0)+(G.mandates.money?20:0)+
+    (9-G.cort)*4+
+    Math.min(30, Math.floor(Math.max(0,G.cash)/50))+
+    Math.min(20, Math.max(0,G.intel)*2)+
+    G.party.length*3+
+    (hasF('accord_unlocked')?5:0)+
+    (made?10:0);
+  $('endName').textContent=fam.name+(key==='heli'&&made? ' · ✦MADE':'');
+  $('endLine').textContent=fam.d;
+  $('endScore').innerHTML=
+    '· MANDATES '+(G.mandates.fiscal?'FISCAL ✓':'FISCAL ✗')+' / '+(G.mandates.money?'MONETARY ✓':'MONETARY ✗')+
+    ' · CASH $'+Math.max(0,G.cash)+' · INTEL '+Math.max(0,G.intel)+' · CORT 🔥'+G.cort+'/9'+
+    '<br>· ROSTER '+G.party.length+(G.bench.length? ' (+'+G.bench.length+' bench)':'')+
+    ' · PURPLE-DOOR VISITS '+(G.flags.madeVisits||0)+'/3'+
+    (made? ' · ✦ THE MADE STICKER IS SOMEWHERE ON YOU. NO ELABORATION.':
+      ' · (the purple door never explained itself; 3 visits were available)')+
+    '<br><br>· PLAN SCORE: <b>'+pts+'/123</b>'+
+    (pts>=90? ' — the historians will need two footnotes and a warning label.':
+      pts>=60? ' — a workable inquiry with quotable uglier parts.':
+      ' — the inquiry will call it “a learning experience” and bill you.');
+  log('VERDICT: '+fam.name+' ('+pts+'/123)');
+  beep('stamp'); save(true);
+  if(NET.role==='host'&&NET.started) NET.bcast({t:'ending', key});
+  openOv('endov');
+}
 function openStub(key){
   const t=$('stTitle'), sub=$('stSub'), bd=$('stBody');
   if(key==='shop'){
@@ -2174,6 +2642,7 @@ function openStub(key){
       buy.textContent='BUY';
       buy.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
       buy.onclick=()=>{
+        if(!NET.uiGate()) return;
         if(G.cash<price){ toast('INSUFFICIENT CASH — rejected by the till','bad'); beep('bad'); return; }
         G.cash-=price;
         G.items=G.items||{};
@@ -2202,7 +2671,9 @@ function openStub(key){
       btn.textContent= swapTo==='bench'? '→ BENCH':'→ LINEUP';
       btn.style.cssText='margin-left:10px;padding:2px 10px;font-size:12px';
       btn.onclick=()=>{
+        if(!NET.uiGate()) return;
         if(swapTo==='bench'){
+          if(G.mpSeats.includes(id)){ toast('A player character stays on duty in multiplayer','bad'); return; }
           if(G.party.length<5) return;
           const lastActive=G.party.pop();
           G.bench.unshift(lastActive);
@@ -2211,10 +2682,17 @@ function openStub(key){
           if(G.party.length<4){
             G.party.push(id);
           } else {
-            const out=G.party.pop();
-            G.bench.push(out);
-            G.party.push(id);
-            toast(out+' ⇄ '+id,'intel');
+            /* multiplayer: rotating a fresh ally in must never displace a
+               player character — replace the last NPC slot instead */
+            let out=-1;
+            for(let i=G.party.length-1;i>=0;i--){
+              if(!(G.mpSeats||[]).includes(G.party[i])){ out=i; break; }
+            }
+            if(out<0){ toast('A player character stays on duty in multiplayer','bad'); return; }
+            const outId=G.party[out];
+            G.party[out]=id;
+            G.bench.push(outId);
+            toast(outId+' ⇄ '+id,'intel');
           }
           const i=G.bench.indexOf(id); if(i>=0) G.bench.splice(i,1);
         }
@@ -2241,6 +2719,7 @@ function openStub(key){
       const b=document.createElement('button'); b.textContent=btnlabel+' ('+cost+'🛈)';
       b.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
       b.onclick=()=>{
+        if(!NET.uiGate()) return;
         if(G.intel<cost){ toast('NOT ENOUGH INTEL (need '+cost+')','bad'); beep('bad'); return; }
         G.intel-=cost; fn(); beep('coin');
         toast('🛈 −'+cost,''); renderHUD(); save(true); openStub('ops');
@@ -2257,6 +2736,7 @@ function openStub(key){
     const sb=document.createElement('button'); sb.textContent='SELL 1 🛈';
     sb.style.cssText='margin:10px 0;padding:2px 10px;font-size:12px';
     sb.onclick=()=>{
+      if(!NET.uiGate()) return;
       if(G.intel<1){ toast('NO INTEL LEFT TO SELL','bad'); beep('bad'); return; }
       const rate=ECON.sellRate()||2;
       G.intel--; G.cash+=rate;
@@ -2285,6 +2765,29 @@ function openStub(key){
     later.className='sub'; later.style.marginTop='14px';
     later.textContent='· BLACK-MARKET GEAR — prices move with the mood; stock arrives later.';
     bd.appendChild(later);
+    /* consumables can be used between scenes to manage cortisol/HP/MP */
+    const held=Object.entries(G.items||{}).filter(([id,c])=>c>0 && ITEMS[id] &&
+      (ITEMS[id].thp||ITEMS[id].tmp||ITEMS[id].cort||ITEMS[id].tintel));
+    if(held.length){
+      const h4=document.createElement('h3'); h4.textContent='POCKETS (USE)'; bd.appendChild(h4);
+      held.forEach(([id])=>{
+        const it=ITEMS[id];
+        const r=document.createElement('div');
+        r.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
+          'padding:5px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
+        r.innerHTML='<span>'+(it.emoji||'')+' '+it.name+' ×'+G.items[id]+'</span>';
+        const b=document.createElement('button');
+        b.textContent='USE';
+        b.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
+        b.onclick=()=>{ if(!NET.uiGate()) return; useItem(id); renderHUD(); save(true); openStub('ops'); };
+        r.appendChild(b); bd.appendChild(r);
+      });
+    } else {
+      const none=document.createElement('div');
+      none.className='sub'; none.style.marginTop='14px';
+      none.textContent='· POCKETS — nothing consumable on you. The servo sells cope, at a price.';
+      bd.appendChild(none);
+    }
   } else if(key==='backrooms'){
     t.textContent='THE BACKROOMS'; sub.textContent='Travel to The Backrooms from the ZONES panel for the purple door. This panel hums in sympathy.';
     bd.innerHTML='<div class="sub">The door remembers every visit across the whole game. Three visits across the run, and something will be acknowledged. No refunds.</div>';
@@ -2294,17 +2797,587 @@ function openStub(key){
   openOv('stov'); beep('intel');
 }
 
+/* ============================================================
+   [5.6] NET — CREW MULTIPLAYER (PeerJS / WebRTC)
+   Host-authoritative: the HOST instance runs the entire engine
+   (scenes, battles, state). Clients render broadcast beats and
+   send intents ("still skipping", "I pick 2", "my move: Attack").
+   Solo play never touches this code (NET.role==='solo').
+   ============================================================ */
+const NET={
+  role:'solo',                 /* 'solo' | 'host' | 'client' */
+  started:false,               /* campaign running while connected */
+  peer:null, conn:null, conns:[],
+  code:'', name:'', selfPc:null,
+  players:[],                  /* host: [{conn(null = HOST themself), name, pc}] */
+  replay:[],                   /* current-scene beats for late joiners */
+  boxEl:null, awaitWorld:false,
+  CHOICE:null, MENU:null, CONT:null,
+  _gTimer:null, _boxTimer:null, _pendingG:null, _pendingBox:null, _skipT:0,
+  bs:0, _skipProc:0, _await:[]
+};
+const MP_PREFIX='bcrpg-online-v1-';
+function mpCode(){
+  const c='ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s='';
+  for(let i=0;i<5;i++) s+=c[Math.floor(Math.random()*c.length)];
+  return s;
+}
+function mpStatus(x){ const el=$('mpStatus'); if(el) el.textContent=x; }
+NET.now=()=> Date.now();
+
+/* — gating helpers used by the whole UI — */
+NET.uiGate=function(){
+  if(NET.role==='client'){
+    toast('In crew play the HOST handles the ledgers (shop/ops/bench/zones)','intel');
+    return false;
+  }
+  return true;
+};
+NET.uiSkip=function(){          /* dialogue advance: solo/host clicks, clients ask */
+  if(NET.role==='client'){ NET.send({t:'skip'}); return; }
+  advance();
+};
+
+/* — transport — */
+NET.send=function(m){
+  if(!NET.conn) return;
+  if(NET.conn.open){ try{ NET.conn.send(m); }catch(e){} }
+  else NET._await.push(m);          /* socket not up yet: deliver on open */
+};
+NET.flushAwait=function(){
+  if(!NET.conn || !NET.conn.open) return;
+  const q=NET._await; NET._await=[];
+  q.forEach(m=>{ try{ NET.conn.send(m); }catch(e){} });
+};
+NET.sendTo=function(c,m){ try{ if(c&&c.open) c.send(m); }catch(e){} };
+NET.bcast=function(m){ NET.conns.forEach(c=>NET.sendTo(c,m)); };
+NET.json=o=> JSON.parse(JSON.stringify(o));
+
+/* debounced full-state sync (the host is the ledger) */
+NET.FAST=false;   /* dev harness: flush immediately instead of timer batches */
+NET.syncG=function(){
+  if(NET.role!=='host'||!NET.started) return;
+  NET._pendingG=NET.json(G);
+  clearTimeout(NET._gTimer);
+  if(NET.FAST){
+    if(NET._pendingG) NET.bcast({t:'g', G:NET._pendingG});
+    NET._pendingG=null; return;
+  }
+  NET._gTimer=setTimeout(()=>{
+    if(NET._pendingG) NET.bcast({t:'g', G:NET._pendingG});
+    NET._pendingG=null;
+  },120);
+};
+NET.execChoice=function(o){
+  if(o.set) setF(o.set,true);
+  if(o.goto){ log('CHOICE: '+o.x); gotoScene(o.goto); return; }
+  if(o.panel){ log('PANEL: '+o.panel); openStub(o.panel); advance(); return; }
+  if(o.toast) toast(o.toast,'intel');
+  log('CHOICE: '+o.x);
+  advance();
+};
+NET.syncBox=function(html){
+  if(NET.role!=='host'||!NET.started) return;
+  NET._pendingBox=html;
+  clearTimeout(NET._boxTimer);
+  if(NET.FAST){
+    if(NET._pendingBox!=null){
+      NET.bcast({t:'box', html:NET._pendingBox});
+      const msg={t:'box', html:NET._pendingBox};
+      const i=NET.replay.findIndex(p=>p.t==='box');
+      if(i>=0) NET.replay[i]=msg; else NET.replay.push(msg);
+    }
+    NET._pendingBox=null; return;
+  }
+  NET._boxTimer=setTimeout(()=>{
+    if(NET._pendingBox!=null){
+      NET.bcast({t:'box', html:NET._pendingBox});
+      /* keep the freshest fight panel in the replay buffer */
+      const i=NET.replay.findIndex(p=>p.t==='box');
+      const msg={t:'box', html:NET._pendingBox};
+      if(i>=0) NET.replay[i]=msg; else NET.replay.push(msg);
+    }
+    NET._pendingBox=null;
+  },40);
+};
+/* discrete beats: broadcast + record for late-join replay.
+   Every beat carries a monotonic serial (bs) so a laggy player's stale
+   "skip" request can never double-advance the host's story pointer. */
+NET.beat=function(p){
+  if(NET.role!=='host'||!NET.started) return;
+  p.bs=++NET.bs;
+  NET.replay.push(p);
+  NET.bcast(p);
+};
+
+NET.ownerOf=function(uid){ return NET.players.find(p=>p.pc===uid)||null; };
+
+/* — host: lobby — */
+NET.hostLobby=function(code){
+  NET.name=($('mpName').value||'HOST').trim().slice(0,12)||'HOST';
+  NET.role='host'; NET.started=false;
+  NET.players=[{conn:null, name:NET.name, pc:null}];
+  NET.code=(code||mpCode()).toUpperCase().replace(/[^A-Z0-9]/g,'')||mpCode();
+  NET.conns=[]; NET.replay=[];
+  showMPLobby(true);
+  NET.renderLobby();
+  if(typeof Peer==='undefined'){
+    mpStatus('PeerJS did not load (are we offline?). Multiplayer is unavailable — the solo campaign still works.');
+    NET.role='solo'; return;
+  }
+  openHostPeer(false);
+};
+function openHostPeer(retry){
+  try{
+    NET.peer=new Peer(MP_PREFIX+NET.code, {debug:0});
+  }catch(e){ mpStatus('Host failed: '+e.message); NET.role='solo'; return; }
+  NET.peer.on('open', ()=> mpStatus('LIVE. Hand out the code: '+NET.code));
+  NET.peer.on('connection', c=>{
+    NET.conns.push(c);
+    c.on('data', m=>{ try{ NET.hostRecv(c,m); }catch(e){ try{c.send({t:'trap', x:'Host hiccup: '+e.message});}catch(_){} } });
+    c.on('close', ()=> NET.hostDrop(c));
+    c.on('error', ()=> NET.hostDrop(c));
+  });
+  NET.peer.on('error', err=>{
+    if(err && err.type==='unavailable-id' && !retry){ NET.code=mpCode(); openHostPeer(true); return; }
+    mpStatus('HOST ERROR: '+((err&&err.type)||err)+' — try again');
+  });
+}
+NET.hostDrop=function(c){
+  NET.conns=NET.conns.filter(x=>x!==c);
+  const p=NET.players.find(p=>p.conn===c);
+  if(!p) return;
+  NET.players=NET.players.filter(x=>x!==p);
+  if(NET.started && G){
+    const i=G.mpSeats.indexOf(p.pc);
+    if(i>=0){
+      G.mpSeats.splice(i,1);
+      toast(p.name+' left — '+CHARS[p.pc].name+' is host-controlled now','bad');
+      /* if their battle menu is pending, hand the wheel back to the host */
+      if(NET.MENU && NET.MENU.uid===p.pc && BATTLE && !BATTLE.over){
+        const ctx=NET.MENU; NET.MENU=null;
+        if(ctx && ctx.u) partyTurn(ctx.u);
+      }
+    }
+  } else if(p.pc){ toast(p.name+' left the lobby','bad'); }
+  NET.bcast({t:'toast', x:p.name+' disconnected — their character is now host-controlled', cls:'bad'});
+  NET.bcastLobby();
+};
+NET.hostRecv=function(c,m){
+  if(!m||typeof m!=='object') return;
+  if(m.t==='hello'){
+    let p=NET.players.find(p=>p.conn===c);
+    if(!p){ p={conn:c, name:String(m.name||'DELEGATE').slice(0,12), pc:null}; NET.players.push(p); }
+    else p.name=String(m.name||p.name).slice(0,12);
+    beep('coin');
+    NET.sendTo(c,{t:'lobby', players:NET.lobbyState(), started:NET.started, code:NET.code});
+    NET.bcastLobby();
+    return;
+  }
+  if(m.t==='pcpick'){
+    const p=NET.players.find(p=>p.conn===c); if(!p) return;
+    if(NET.started){
+      /* late join / reconnect: claim an unseated roster face, else spectate */
+      const claim=G.party.find(id=> !G.mpSeats.includes(id) && id===m.id);
+      if(claim){
+        p.pc=claim; G.mpSeats.push(claim); G.mpNames[claim]=p.name;
+        ensurePartyStats();
+        NET.sendTo(c,{t:'start', pc:claim});
+        NET.sendTo(c,{t:'g', G:NET.json(G)});
+        NET.sendTo(c,{t:'resume', beats:NET.replay.slice()});
+        NET.bcast({t:'toast', x:p.name+' took the wheel of '+CHARS[claim].name, cls:'intel'});
+        renderHUD(); save(true);
+      } else {
+        NET.sendTo(c,{t:'trap', x:'No unclaimed character right now — you are watching this inquiry as a spectator.'});
+      }
+      return;
+    }
+    if(m.id && CANDIDATES.includes(m.id) && !NET.players.some(p2=>p2.pc===m.id)){
+      p.pc=m.id; beep('coin');
+    }
+    NET.bcastLobby();
+    return;
+  }
+  if(!NET.started) return;
+  if(m.t==='pick')   { NET.remoteChoice(c, m.idx); return; }
+  if(m.t==='skip')   {
+    if(BATTLE||NET.CHOICE||NET.CONT) return;
+    /* stale-skip guard: a client lagging a beat behind their screen must not
+       advance the story twice for one click */
+    if(NET.bs && m.bs && !(m.bs>NET._skipProc)) return;
+    const now=NET.now();
+    if(!NET.FAST && now-NET._skipT<90) return;   /* debounce real humans */
+    NET._skipT=now;
+    NET._skipProc=Math.max(NET._skipProc, m.bs||0);
+    advance(); return;
+  }
+  if(m.t==='menuPick'){ NET.remoteMenu(c, m.seq, m.idx); return; }
+  if(m.t==='cont')   { NET.remoteCont(c); return; }
+};
+
+/* remote intent executors (host side) */
+NET.remoteChoice=function(c, idx){
+  const ctx=NET.CHOICE; if(!ctx) return;
+  NET.CHOICE=null;
+  const list=(ctx.kind==='ally')? ctx.pool: ctx.b.options;
+  const p=NET.players.find(p=>p.conn===c);
+  const i=Math.max(0, Math.min(list.length-1, idx|0));
+  if(ctx.kind==='ally'){
+    if(!ctx.pool.length){ advance(); return; }
+    const id=ctx.pool[i];
+    log('SIGNEE: '+(p? p.name:'?')+' → '+(CHARS[id]||{}).name);
+    joinChar(id);
+    if(ctx.b.say) addDialogue({who:CHARS[id].name, pid:id, text:ctx.b.say});
+    return;
+  }
+  const o=list[i]; if(!o) return;
+  log('CHOICE by '+(p? p.name:'?')+': '+o.x);
+  if(o.set) setF(o.set,true);
+  if(o.goto){ gotoScene(o.goto); return; }
+  if(o.panel){ openStub(o.panel); advance(); return; }
+  if(o.toast) toast(o.toast,'intel');
+  advance();
+};
+NET.remoteMenu=function(c, seq, idx){
+  const ctx=NET.MENU;
+  if(!ctx || ctx.seq!==seq) return;
+  const p=NET.players.find(p=>p.conn===c);
+  if(!p || p.pc!==ctx.uid) return;      /* only that unit's player may act */
+  NET.MENU=null;
+  const fn=ctx.fns[idx];
+  if(fn) fn();
+};
+NET.remoteCont=function(c){
+  if(!NET.CONT) return;
+  const f=NET.CONT; NET.CONT=null; f();
+};
+
+/* — lobby UI (shared) — */
+function showMPLobby(host){
+  closeOv('selov');
+  openOv('mpov');
+  $('mpJoinRow').style.display= host? 'none':'flex';
+  $('mpNameRow').style.display= host? 'flex':'flex';
+  $('mpCodeLine').style.display= host? 'block':'none';
+  $('mpStart').style.display= host? 'inline-block':'none';
+  mpStatus(host? 'Creating the table…':'Enter the host’s 5-letter code.');
+  $('mpGrid').innerHTML='';
+  $('mpList').innerHTML='';
+  $('mpCodeLine').textContent= host? NET.code: '';
+}
+NET.lobbyState=function(){
+  return NET.players.map(p=>({ id:(p.conn? p.conn.peer:'HOST'), name:p.name, pc:p.pc }));
+};
+NET.renderLobby=function(){
+  const list=$('mpList'); if(!list) return;
+  list.innerHTML='';
+  NET.players.forEach(p=>{
+    const r=document.createElement('div'); r.className='mprow';
+    const taken=p.pc? ' — playing <b style="color:'+(CHARS[p.pc]||{}).color+'">'+((CHARS[p.pc]||{}).name||'?')+'</b>':' — no candidate yet';
+    r.innerHTML='<span>'+(p.conn? '':'⭐ ')+'<b>'+p.name+'</b>'+taken+'</span>'+
+      (p.conn? '':'<span class="mpbadge">HOST</span>');
+    list.appendChild(r);
+  });
+  const g=$('mpGrid'); g.innerHTML='';
+  CANDIDATES.forEach(id=>{
+    const c=CHARS[id];
+    const d=document.createElement('div'); d.className='selcard';
+    if(NET.players.some(p=>p.pc===id)) d.classList.add('taken');
+    const selfPc= NET.role==='host'? NET.players[0].pc : NET.selfPc;
+    if(selfPc===id) d.classList.add('picked');
+    d.innerHTML='<div class="nm" style="color:'+c.color+'">'+c.name+'</div>'+
+      '<div class="cl">'+c.cls+'</div><div class="bl" style="font-size:11px">'+c.blurb+'</div>';
+    d.onclick=()=>{ beep('tick'); NET.localPick(id); };
+    g.appendChild(d);
+  });
+  if(NET.role==='host') $('mpStart').disabled=!(NET.players.length>=1 && NET.players.every(p=>p.pc));
+};
+NET.bcastLobby=function(){
+  const msg={t:'lobby', players:NET.lobbyState(), started:NET.started, code:NET.code};
+  NET.bcast(msg);
+  NET.renderLobby();
+};
+NET.localPick=function(id){
+  if(NET.role==='host'){
+    if(NET.started) return;
+    if(NET.players.some(p=>p.pc===id)){ toast('Already claimed','bad'); return; }
+    NET.players[0].pc=id; beep('coin'); NET.bcastLobby(); return;
+  }
+  if(CANDIDATES.includes(id)) NET.send({t:'pcpick', id});
+};
+NET.beginCrew=function(){
+  if(NET.role!=='host'||NET.started) return;
+  if(!NET.players.every(p=>p.pc)){
+    mpStatus('Every seat needs a candidate before the clock starts.');
+    return;
+  }
+  const picks=NET.players.map(p=>p.pc).slice(0,4);
+  NET.players.forEach(p=>{ if(p.pc && picks.indexOf(p.pc)<0){ p.pc=null; } });
+  NET.started=true;
+  NET.replay=[];
+  /* tell each player their candidate BEFORE the first beat lands */
+  NET.players.forEach(p=>{ if(p.conn) NET.sendTo(p.conn,{t:'start', pc:p.pc}); });
+  startGame(picks[0]);
+  G.party=picks.slice(0,4);
+  G.mpSeats=picks.slice(0,4);
+  G.mpNames={};
+  NET.players.forEach(p=>{ if(p.pc) G.mpNames[p.pc]=p.name; });
+  ensurePartyStats(); renderHUD();
+  save(true);
+  NET.bcast({t:'g', G:NET.json(G)});
+  renderHUD();
+};
+
+/* — client side — */
+NET.joinLobby=function(code){
+  NET.name=($('mpName').value||'DELEGATE').trim().slice(0,12)||'DELEGATE';
+  code=(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length<4){ mpStatus('That code looks improvised. Five characters.'); return; }
+  NET.role='client'; NET.started=false; NET.selfPc=null;
+  showMPLobby(false);
+  if(typeof Peer==='undefined'){
+    mpStatus('PeerJS did not load (are we offline?). Multiplayer is unavailable — the solo campaign still works.');
+    NET.role='solo'; return;
+  }
+  mpStatus('Dialing '+code+'…');
+  try{ NET.peer=new Peer({debug:0}); }catch(e){ mpStatus('Join failed: '+e.message); NET.role='solo'; return; }
+  NET.peer.on('open', ()=>{
+    NET.conn=NET.peer.connect(MP_PREFIX+code, {reliable:true});
+    NET.conn.on('open', ()=>{ mpStatus('Connected — the committee convenes.'); NET.send({t:'hello', name:NET.name}); NET.flushAwait(); });
+    NET.conn.on('data', m=>{ try{ NET.recv(m); }catch(e){ mpStatus('Data hiccup: '+e.message); } });
+    NET.conn.on('close', ()=>{ mpStatus('Host hung up. The inquiry adjourns.'); NET.cleanup(true); });
+  });
+  NET.peer.on('error', err=>{
+    if(err && err.type==='peer-unavailable') mpStatus('Nobody hosting code '+code+'. Check it and retry.');
+    else mpStatus('JOIN ERROR: '+((err&&err.type)||err));
+  });
+};
+
+NET.recv=function(m){
+  if(!m||typeof m!=='object') return;
+  switch(m.t){
+    case 'lobby': {
+      NET.playersInfo=m.players||[];
+      NET.renderLobbyFrom(m.players);
+      mpStatus('In the lobby. Pick a candidate.');
+      break;
+    }
+    case 'trap': mpStatus(m.x); toast(m.x,'bad'); break;
+    case 'start': {
+      NET.selfPc=m.pc; NET.awaitWorld=true;
+      closeOv('mpov');
+      toast('You are '+CHARS[m.pc].name+'. The committee convenes…','intel');
+      break;
+    }
+    case 'g': {
+      G=m.G;
+      if(NET.awaitWorld){
+        NET.awaitWorld=false;
+        show('world'); renderHUD(); NET.beatsLocal=[];
+      }
+      renderHUD();
+      break;
+    }
+    case 'scene': {
+      NET.beatsLocal=[];
+      const st=$('stage'); if(st) st.innerHTML='';
+      const kick=document.createElement('div'); kick.className='beat kicker';
+      kick.textContent=m.zone; st.appendChild(kick);
+      break;
+    }
+    case 'k': { const st=$('stage'); const d=document.createElement('div');
+      d.className='beat kicker'; d.textContent=m.x; st.appendChild(d); break; }
+    case 'say': { NET.rSay(m); break; }
+    case 'choice': NET.rChoice(m); break;
+    case 'menu': NET.rMenu(m); break;
+    case 'newbox': {
+      const st=$('stage');
+      const box=document.createElement('div'); box.className='beat';
+      box.style.border='1px solid'+(m.red? ' var(--red)':' rgba(255,255,255,.15)');
+      box.style.padding='10px'; box.style.margin='8px 0';
+      st.appendChild(box); NET.boxEl=box;
+      break;
+    }
+    case 'box': if(NET.boxEl) NET.boxEl.innerHTML=m.html; break;
+    case 'rbeat': {
+      const st=$('stage');
+      const w=document.createElement('div'); w.className='beat';
+      w.innerHTML=m.html;
+      const ok=document.createElement('button'); ok.textContent='CONTINUE';
+      ok.onclick=()=>{ beep('tick'); NET.send({t:'cont'}); ok.remove(); };
+      w.appendChild(ok); st.appendChild(w); st.scrollTop=st.scrollHeight;
+      break;
+    }
+    case 'made': {
+      const st=$('stage');
+      const w=document.createElement('div'); w.className='beat';
+      const lines=[
+        'The purple door has no signage and perfectly smooth hinges. You open it. Behind it: a short hallway.',
+        'The hallway ends at a second purple door. It is warmer, and you do not remember walking.',
+        'The third door opens onto the first hallway. Somewhere a sticker quietly acknowledges you.'
+      ];
+      w.innerHTML='<div style="color:#b18cff;max-width:560px;margin:0 auto;padding:10px 0">'+
+        lines[Math.min((m.n||1)-1,2)]+(m.recruit? '<br><b style="color:#b18cff">'+m.recruit+' emerges.</b>':'')+'</div>';
+      if(m.n<3){
+        const ok=document.createElement('button'); ok.textContent='CLOSE THE DOOR';
+        ok.onclick=()=>{ beep('intel'); NET.send({t:'skip', bs:m.bs}); ok.remove(); };
+        w.appendChild(ok);
+      }
+      st.appendChild(w); st.scrollTop=st.scrollHeight;
+      break;
+    }
+    case 'ms': {
+      $('mstoneBig').textContent=m.m+' — CRISIS ADVANCES';
+      $('mstoneSub').textContent=
+        'PHASE '+m.phase+': '+m.phaseName+' — encounters ratchet, shop prices swell, intel gets dearer.'+
+        (m.sub? '\n'+m.sub : '');
+      openOv('mstone'); beep('bad');
+      break;
+    }
+    case 'ev': {
+      $('evName').textContent='📈 '+m.name+' — '+m.mood;
+      $('evLine').textContent=m.d;
+      $('evFx').innerHTML=m.fx||'';
+      openOv('evov'); beep('intel');
+      break;
+    }
+    case 'ending': showEnding(m.key); break;
+    case 'toast': toast(m.x, m.cls); break;
+    case 'resume': {
+      (m.beats||[]).forEach(function(b){ try{ NET.recv(b); }catch(e){} });
+      mpStatus('Caught up with the committee.');
+      break;
+    }
+    case 'bye': NET.cleanup(true); break;
+  }
+};
+
+/* client beat renderers (mirror the host's DOM builders) */
+NET.rSay=function(m){
+  const st=$('stage');
+  retireBeats();
+  const d=document.createElement('div'); d.className='dline';
+  d.appendChild(sayPortrait(m.pid, m.pid===NET.selfPc));
+  const body=document.createElement('div'); body.className='dbody';
+  const who=document.createElement('div'); who.className='dwho';
+  who.textContent=(m.silh?'📢 ':'')+m.who;
+  body.appendChild(who);
+  const txt=document.createElement('div'); txt.className='dtext'; txt.innerHTML=m.text;
+  body.appendChild(txt); d.appendChild(body);
+  d.onclick=()=>{ beep('tick'); NET.send({t:'skip', bs:m.bs}); };
+  st.appendChild(d);
+  const a=document.createElement('div'); a.className='adv'; a.textContent='─ CLICK / SPACE ─';
+  st.appendChild(a); st.scrollTop=st.scrollHeight;
+};
+NET.rChoice=function(m){
+  const st=$('stage');
+  retireBeats();
+  document.querySelectorAll('#stage .adv').forEach(e=>e.remove());
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+m.prompt;
+  w.appendChild(pr);
+  (m.options||[]).forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">'+(i+1)+'.</span> '+o.x+(o.note?'<small>'+o.note+'</small>':'');
+    btn.onclick=()=>{ beep('tick'); NET.send({t:'pick', idx:i}); };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+};
+NET.rMenu=function(m){
+  const st=$('stage');
+  retireBeats();
+  NET.MENUSEQ=m.seq;
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  const mine=(m.uid===NET.selfPc);
+  if(!mine){
+    pr.textContent='⏳ '+((CHARS[m.uid]||{}).name||'A colleague')+' is deciding their move…';
+    w.appendChild(pr); st.appendChild(w); st.scrollTop=st.scrollHeight; return;
+  }
+  pr.textContent=m.prompt; w.appendChild(pr);
+  (m.opts||[]).forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    if(o.dis) btn.disabled=true;
+    btn.innerHTML='<span class="k">'+o.k0+'</span> '+o.x+
+      (o.mpc!=null? ' <span class="hp">MP '+o.mpc+'</span>':'')+
+      (o.rhp? ' <span class="hp">HP '+o.rhp+'</span>':'')+
+      (o.sub? '<small>'+o.sub+'</small>':'');
+    btn.onclick=()=>{
+      if(o.dis){ toast('NOT ENOUGH MP','bad'); return; }
+      beep('tick'); NET.send({t:'menuPick', seq:m.seq, idx:i});
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+};
+NET.playersInfo=[];
+NET.renderLobbyFrom=function(players){
+  const list=$('mpList'); if(!list) return;
+  list.innerHTML='';
+  (players||[]).forEach(p=>{
+    const r=document.createElement('div'); r.className='mprow';
+    const mine=(NET.conn && p.id===NET.conn.peer);
+    const c=p.pc? CHARS[p.pc]: null;
+    r.innerHTML='<span>'+(mine?'▶ ':'')+p.name+(c? ' — playing <b style="color:'+c.color+'">'+c.name+'</b>':' — no candidate yet')+'</span>'+
+      (p.id==='HOST'? '<span class="mpbadge">HOST</span>':'');
+    list.appendChild(r);
+  });
+  const g=$('mpGrid'); g.innerHTML='';
+  CANDIDATES.forEach(id=>{
+    const c=CHARS[id];
+    const d=document.createElement('div'); d.className='selcard';
+    if((players||[]).some(p=>p.pc===id)) d.classList.add('taken');
+    d.innerHTML='<div class="nm" style="color:'+c.color+'">'+c.name+'</div>'+
+      '<div class="cl">'+c.cls+'</div><div class="bl" style="font-size:11px">'+c.blurb+'</div>';
+    d.onclick=()=>{ beep('tick'); NET.send({t:'pcpick', id});
+      toast('Nominated '+c.name+' — waiting on the host','intel'); };
+    g.appendChild(d);
+  });
+};
+NET.cleanup=function(silent){
+  try{ if(NET.conn&&NET.conn.close) NET.conn.close(); }catch(e){}
+  try{ if(NET.peer&&NET.peer.destroy) NET.peer.destroy(); }catch(e){}
+  NET.conn=null; NET.peer=null; NET.conns=[];
+  NET.role='solo'; NET.started=false; NET.selfPc=null; NET.awaitWorld=false;
+  NET.CHOICE=null; NET.CONT=null;
+  if(!silent){ closeOv('mpov'); show('title'); }
+};
+
+/* — lobby buttons — */
+$('btnHost').onclick=()=>{ beep('tick'); NET.hostLobby(); };
+$('btnJoin').onclick=()=>{ beep('tick'); showMPLobby(false); };
+$('mpGo').onclick=()=>{ beep('tick'); NET.joinLobby($('mpCode').value); };
+$('mpStart').onclick=()=>{ beep('coin'); NET.beginCrew(); };
+$('mpLeave').onclick=()=>{
+  beep('tick');
+  if(NET.role==='host'||NET.role==='client'){
+    if(NET.role==='host'&&NET.started) NET.bcast({t:'bye'});
+    NET.cleanup();
+  }
+  closeOv('mpov'); show('title');
+};
+
 /* — ESC + keyboard — */
-$('stClose').onclick=()=>{ closeOv('stov'); renderHUD(); save(true); };
-$('evOk').onclick=()=>{ closeOv('evov'); save(true); };
+$('stClose').onclick=()=>{ closeOv('stov'); renderHUD(); save(true); };$('evOk').onclick=()=>{ closeOv('evov'); save(true); };
+$('endOk').onclick=()=>{
+  closeOv('endov'); save(true);
+  $('stage').innerHTML='';
+  show('title');
+  /* crew campaign over: adjourn the room */
+  if(NET.role==='host'){ NET.bcast({t:'bye'}); NET.cleanup(true); }
+  else if(NET.role==='client'){ NET.cleanup(true); }
+};
 $('mstoneOk').onclick=()=>{
   closeOv('mstone'); save(true);
   if(R.scene==='m0_exit') gotoScene('hub');
 };
 
 document.addEventListener('keydown',ev=>{
+  if($('mpov').classList.contains('on')){ if(ev.key==='Escape'){ $('mpLeave').click(); } return; }
   if($('stov').classList.contains('on')){ if(ev.key==='Escape'){ $('stClose').click(); } return; }
   if($('evov').classList.contains('on')){ if(ev.key==='Escape'){ $('evOk').click(); } return; }
+  if($('endov').classList.contains('on')){ if(ev.key==='Escape'||ev.key==='Enter'){ $('endOk').click(); } return; }
   if($('mstone').classList.contains('on')||$('selov').classList.contains('on')){
     if(ev.key==='Escape'){ $('selCancel').click(); }
     return;
@@ -2413,14 +3486,36 @@ window.BCRPG={
   /* P3 market APIs */
   EVENTS, MOOD_MODS, ECON, drawEventCard,
   setMood:m=>{ G.mood=m; renderHUD(); save(true); },
+  /* P5 verdict APIs (dev/tests) */
+  verdict:computeVerdict, ending:showEnding,
+  mile:(id)=>{ advanceMilestone(id, G.phase, G.phaseName, 'DEV milestone'); save(true); },
+  /* playtest hooks */
+  ENEMIES,
   /* live battle introspection (tests) */
-  battle:()=>BATTLE
+  battle:()=>BATTLE,
+  /* crew multiplayer (dev/tests): host/join with a FakePeer in harnesses */
+  net:{
+    host:code=>NET.hostLobby(code),
+    join:(code,name)=>{ if(name) $('mpName').value=name; NET.joinLobby(code); },
+    pick:id=>NET.localPick(id),
+    begin:()=>NET.beginCrew(),
+    leave:()=>NET.cleanup(),
+    fast:v=>{ NET.FAST=!!v; },   /* harness: no debounce, sync everything */
+    drop:()=>{ const c=NET.conns[0]; if(c&&c.close) c.close(); },   /* harness: simulate a client quitting */
+    code:()=>NET.code,
+    players:()=>NET.players,
+    state:()=>({role:NET.role, started:NET.started, selfPc:NET.selfPc, code:NET.code})
+  }
 };
 /* old-save migration: seed missing P2 fields without touching v:1 shape */
 const _origContinue=continueGame;
 continueGame=function(){
   _origContinue();
-  if(G){ ensurePartyStats(); }
+  if(G){
+    ensurePartyStats();
+    if(!G.mpSeats) G.mpSeats=[];
+    if(!G.mpNames) G.mpNames={};
+  }
 };
 </script>
 </body>
