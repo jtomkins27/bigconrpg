@@ -340,6 +340,44 @@ Original batch list, for the record:
 - **Remaining known-open items:** per-skill cast twinkle (audio), hub/zone
   card art direction, real-browser PeerJS smoke test (manual, two tabs).
 
+### Session: hour-long dual soak + the low-MP stall fix
+
+- **`dev/soak.ps1` added (`78e3c0a`):** a ~55-minute soak supervisor that
+  repeats the harness batteries and tallies per-run digests under
+  `%TEMP%\opencode\soak\`. Two background subagents ran it in parallel —
+  one multiplayer, one solo.
+- **Volume played (both agents combined, ~55 min):**
+  - Multiplayer: **137 battery runs → 1,368 two-player crews** (69×8 +
+    68×12), host + client over the FakePeer bus, lobby to verdict.
+  - Solo: **1,345 runs × 14 → 18,830 full playthroughs** of the real
+    engine, click-by-click.
+- **Zero desyncs.** No verdict-mismatch or sync error ever appeared in
+  any of the 1,368 crews — the multiplayer state machine (beat serials,
+  skip debounce, menu payloads, seat ownership) survived the full volume.
+- **Findings and fixes:**
+  - **Low-MP battle stall (drivers, not engine):** 3 MP crews + 1 solo
+    run stalled when an actor's MP was below every kit cost (0–1 vs
+    costs 3–5): the pilot kept re-entering the (fully disabled) Skill
+    menu each turn, cycling Back↔Skill until the watchdog fired. The
+    engine itself never hangs — Attack/Defend always resolve; this is
+    automation choosing an empty door. Fix in BOTH drivers
+    (`dev/playtest.js`, `dev/mp_test.js`): a `skillBackFired` flag set
+    when a kit comes back completely empty suppresses Skill re-entry
+    until that turn resolves via Attack/Defend, then clears.
+  - **Grind warns re-frequency-checked:** the 3-loss → warn trips are a
+    severity ladder, not a defect; with operative fatigue from batch 3
+    in play, warns stayed non-fatal across the whole soak and the
+    8-loss fatal spiral appeared only where an unbroken FRENZY stretch
+    overlapped consecutive retries before the batch-3 fix; post-fix
+    soak (below) shows no escalation.
+- **Post-fix confirmation soak (10 min):** 33 MP runs (~380 crews) —
+  **0 BATTLE STUCK, 0 errors, 0 failed runs**; totals were 25 clean +
+  8 warn-bearing (all self-recovering 3-drop trips). Combined with the
+  batch-3 24/24 this retires the stall class from the harness.
+- **Remaining known-open items:** unchanged from batch 3 (per-skill
+  cast twinkle, hub art direction, manual real-browser PeerJS smoke).
+
+
 
 
 ### Session: automated playtester + first findings

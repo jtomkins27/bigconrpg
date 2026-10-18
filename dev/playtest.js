@@ -174,11 +174,16 @@ function chooseOption(run, btns, hint){
     const iAttack=btns[0];
     const iSkill=btns.find(b=>/Skill/.test(String(b.inner||'')));
     const iDefend=btns.find(b=>/Defend/.test(String(b.inner||'')));
-    if(needCare && iSkill && Math.random()<0.7) return iSkill;   /* open the ♥ kit */
-    if(boss && iSkill && Math.random()<0.5) return iSkill;
-    if(r<0.66 || !iDefend) return iAttack;
-    if(r<0.82 && iSkill) return iSkill;
-    return iDefend;
+    /* SOAK FIND: an actor with MP below every kit cost looped Skill↔Back to
+       the watchdog. Once a kit has come back empty this battle, resolve with
+       Attack/Defend; the flag clears as soon as the turn resolves. */
+    const allow= !run.skillBackFired;
+    if(needCare && iSkill && Math.random()<0.7 && allow) return iSkill;   /* open the ♥ kit */
+    if(boss && iSkill && Math.random()<0.5 && allow) return iSkill;
+    if(allow && (r<0.66 || !iDefend)) return iAttack;
+    if(iSkill && allow && r<0.82) return iSkill;
+    run.skillBackFired=false;   /* turn resolves with defend/attack */
+    return iDefend || iAttack;
   }
   /* skill/target menus: prefer a ♥ heal/revive when the crew needs care;
      otherwise pick whatever is enabled; if everything is disabled, take the
@@ -188,6 +193,8 @@ function chooseOption(run, btns, hint){
   if(needCare && heal) return heal;
   const usable=btns.filter(b=>!b.disabled);
   if(!usable.length){
+    /* nothing affordable in this kit — Back out and suppress re-entry (SOAK FIND) */
+    run.skillBackFired=true;
     const back=btns.find(b=>/Back/.test(String(b.inner||'')));
     return back||btns[0];
   }
