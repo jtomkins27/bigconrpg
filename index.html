@@ -204,6 +204,18 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .bstub .enemyrow .hp{margin-left:auto;color:var(--dim);font-size:12px}
 .bstub .fine{color:var(--dim);font-size:12px;margin:12px 0 16px;line-height:1.6}
 
+/* battle panel (live engine, P2 · P6 polish: bars, boss banner, live log) */
+.enemyrow{display:flex;align-items:center;gap:10px;border:1px dashed var(--line);
+  padding:8px 12px;margin-bottom:6px;font-size:14px;max-width:560px}
+.enemyrow.down{opacity:.4}
+.enemyrow .hp{margin-left:auto;color:var(--dim);font-size:12px;white-space:nowrap}
+.enemyrow .bar{width:110px;height:6px;flex:none;background:#1b1723;border:1px solid var(--line)}
+.enemyrow .bar i{display:block;height:100%;transition:width .3s}
+.bossbar{border:1px solid var(--gold);color:var(--gold);padding:6px 12px;margin-bottom:8px;
+  letter-spacing:.24em;font-size:12px;max-width:560px;background:rgba(255,190,60,.05)}
+.logfine{color:var(--dim);font-size:12px;margin:10px 0 4px;line-height:1.6}
+.lognew{color:#fff;animation:fadein .25s}
+
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line)}
 ::-webkit-scrollbar-track{background:#131118}
@@ -1252,12 +1264,12 @@ const ECON={
 const DIFFS={
   ea:{n:'EASY',     foe:0.85, enc:0.9,  loss:0.75, reward:1.2},
   st:{n:'STANDARD', foe:1,    enc:1,    loss:1,    reward:1},
-  ha:{n:'HARD',     foe:1.15, enc:1.15, loss:1.15, reward:0.85}
+  ha:{n:'HARD',     foe:1.10, enc:1.10, loss:1.15, reward:0.85}
 };
 const DIFF_NOTE={
   ea:'foes −15% · gentler tape · kinder fees',
   st:'the published settings — satire intact',
-  ha:'foes +15% · steeper tape · thinner payouts'
+  ha:'foes +10% · steeper tape · thinner payouts'
 };
 function selDiff(){
   try{ return localStorage.getItem('bcrpg_diff')||'st'; }catch(e){ return 'st'; }
@@ -1363,7 +1375,11 @@ function stinger(name){
       win:    [[392,0,.12],[494,.11,.12],[587,.22,.22]],           /* site secured */
       lose:   [[330,0,.14],[294,.14,.14],[233,.28,.30]],           /* withdrawal fee */
       mile:   [[262,0,.1],[330,.1,.1],[392,.2,.1],[523,.3,.28]],   /* crisis advances */
-      verdict:[[440,0,.12],[554,.12,.12],[659,.24,.12],[880,.36,.4]] /* ending fanfare */
+      verdict:[[440,0,.12],[554,.12,.12],[659,.24,.12],[880,.36,.4]], /* ending fanfare */
+      fight:  [[220,0,.08],[330,.09,.1],[440,.19,.14]],            /* battle start */
+      boss:   [[110,0,.22],[139,.22,.22],[110,.44,.34]],           /* boss enters, ominous */
+      ko:     [[196,0,.12],[147,.13,.16],[98,.28,.24]],            /* party member down */
+      item:   [[523,0,.07],[659,.08,.07],[784,.16,.12]]            /* gear/menu flourish */
     };
     (lines[name]||[]).forEach(n=>{
       const o=AC.createOscillator(), g=AC.createGain();
@@ -1374,6 +1390,12 @@ function stinger(name){
       o.start(AC.currentTime+n[1]); o.stop(AC.currentTime+n[1]+n[2]+.02);
     });
   }catch(e){}
+}
+/* — P6: play a cue locally and relay it to the crew (clients hear the same
+   stinger through the {t:'cue'} beat without a duplicate on the host). — */
+function cueCrew(name){
+  stinger(name);
+  if(NET.role==='host'&&NET.started) try{ NET.bcast({t:'cue', name}); }catch(e){}
 }
 
 /* — toasts & resource application — */
@@ -2069,6 +2091,8 @@ function beginBattle(b, box){
   if(MOOD_OPEN){ battleBeat(MOOD_OPEN); MOOD_OPEN=null; }
   /* cortisol pre-fight: Shaken start at threshold */
   if(G.cort>=CORT.shaken) team.forEach(u=>{ if(!u.down) addStatus(u,{k:'shaken', t:99, name:'SHAKEN'}); });
+  BATTLE.boss=foes.some(f=>f.boss);
+  cueCrew(BATTLE.boss? 'boss':'fight');   /* P6 audio kit: battle-start cue, host + crew */
   renderBattle();
   battleBeat('⚔ '+((ENEMIES[b.id]||{}).name||'HOSTILES')+' — a turn-based fight begins.\n'+((ENEMIES[b.id]||{}).line||''));
   nextTurn();
@@ -2083,20 +2107,24 @@ function renderBattle(){
   const w=BATTLE&&BATTLE.box;
   if(!w) return;
   let html='';
+  if(BATTLE.boss) html+='<div class="bossbar">⚑ BOSS FIGHT — '+((ENEMIES[BATTLE.b.id]||{}).name||'')+'</div>';
   BATTLE.foes.forEach(f=>{
-    const pct=Math.round(100*f.hp/f.maxhp);
-    html+='<div class="enemyrow" style="'+(f.down?'opacity:.35':'')+'">'+
-      f.emoji+' '+f.name+' <span class="hp" style="color:'+(pct<40?'var(--red)':'var(--ok)')+'">'+
+    const pct=Math.max(0,Math.min(100,Math.round(100*f.hp/f.maxhp)));
+    html+='<div class="enemyrow'+(f.down?' down':'')+'">'+
+      f.emoji+' '+f.name+
+      '<div class="bar"><i style="width:'+pct+'%;background:'+(pct<40?'var(--red)':'var(--ok)')+'"></i></div>'+
+      '<span class="hp" style="color:'+(pct<40?'var(--red)':'var(--ok)')+'">'+
       (BATTLE.reveal? 'HP '+f.hp+'/'+f.maxhp : 'HP '+pct+'%')+
       (hasStatus(f,'wound')?' · BLEEDING':'')+ (hasStatus(f,'charmed')?' · CHARMED':'')+
       (hasStatus(f,'skip')?' · NO QUORUM':'')+'</span></div>';
   });
-  html+='<div class="fine" style="margin-top:6px">'+
+  html+='<div class="logfine" style="margin-top:6px">'+
     BATTLE.team.map(u=>(u.down?'<s>':'')+u.name+' '+u.hp+'/'+u.maxhp+' · MP '+u.mp+
       (u.statuses.length? ' ['+u.statuses.map(s=>s.name).join(',')+']':'')+
       (u.down?'</s>':'')).join(' · ')+'</div>';
-  html+='<div class="fine" style="white-space:pre-line;margin-top:6px">'+
-    BATTLE.log.slice(-6).join('\n')+'</div>';
+  const lines=BATTLE.log.slice(-6);
+  html+='<div class="logfine" style="white-space:pre-line">'+lines.map((l,i)=>
+    (i===lines.length-1&&l? '<span class="lognew">'+l+'</span>': l)).join('\n')+'</div>';
   w.innerHTML=html;
   /* multiplayer: sync the fight panel to the crew */
   if(NET.role==='host'&&NET.started) NET.syncBox(html);
@@ -2114,7 +2142,9 @@ function hitParty(u,amt,who){
   }
   u.hp-=amt;
   battleBeat((who||'')+' hits '+u.name+' for '+amt);
-  if(u.hp<=0){ u.hp=0; u.down=true; battleBeat(u.name+' is out of the meeting.'); }
+  if(u.hp<=0){ u.hp=0; u.down=true;
+    if(!BATTLE._koCued){ BATTLE._koCued=true; cueCrew('ko'); }   /* P6: one thud per fight, first casualty */
+    battleBeat(u.name+' is out of the meeting.'); }
 }
 function alive(u){ return !u.down; }
 function teamAlive(){ return BATTLE.team.filter(alive); }
@@ -2709,7 +2739,7 @@ function openStub(key){
         G.items=G.items||{};
         G.items[id]=(G.items[id]||0)+1;
         toast('💰 −$'+price+' · +1 '+(item.emoji||'')+' '+item.name,'');
-        beep('coin'); renderHUD(); save(true); openStub('shop');
+        beep('coin'); cueCrew('item'); renderHUD(); save(true); openStub('shop');
       };
       row.appendChild(buy);
       bd.appendChild(row);
@@ -3304,6 +3334,7 @@ NET.recv=function(m){
       break;
     }
     case 'ending': showEnding(m.key); break;
+    case 'cue': stinger(m.name); break;
     case 'toast': toast(m.x, m.cls); break;
     case 'resume': {
       (m.beats||[]).forEach(function(b){ try{ NET.recv(b); }catch(e){} });

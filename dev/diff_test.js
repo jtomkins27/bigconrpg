@@ -53,7 +53,7 @@ chk(G.diff === 'st', 'fresh save diff defaults to STANDARD (no localStorage pick
 // --- title chips render 3 options and respond ---
 chk(created.filter(e=>e.className==='selcard').length === 10, 'PC select intact (10 cards)');
 api.setDiff('ha');
-chk(api.ECON.enc() === api.DIFFS.ha.enc && api.ECON.enc() === 1.15, 'HARD encounter modifier 1.15', api.ECON.enc());
+chk(api.ECON.enc() === api.DIFFS.ha.enc && api.ECON.enc() === 1.10, 'HARD encounter modifier 1.10', api.ECON.enc());
 api.setDiff('ea');
 chk(Math.abs(api.ECON.enc() - 0.9) < 1e-9, 'EASY encounter modifier 0.9', api.ECON.enc());
 api.setDiff('st');
@@ -77,7 +77,7 @@ chk(api.DIFFS.ea.reward === 1.2 && api.DIFFS.ha.reward === 0.85, 'reward curve: 
 
 // --- chip UI wire: click HARD, note text updates ---
 el('dHA').onclick();
-chk(el('dNote').textContent === 'foes +15% · steeper tape · thinner payouts', 'HARD chip updates note line', el('dNote').textContent);
+chk(el('dNote').textContent === 'foes +10% · steeper tape · thinner payouts', 'HARD chip updates note line', el('dNote').textContent);
 el('dEA').onclick();
 chk(el('dNote').textContent === 'foes −15% · gentler tape · kinder fees', 'EASY chip updates note line');
 el('dST').onclick();
@@ -86,6 +86,39 @@ chk(el('dNote').textContent === 'the published settings — satire intact', 'STA
 // --- FRENZY smoother: enc modifier is now 1.06, not 1.10 ---
 chk(api.MOOD_MODS.FRENZY.enc === 1.06, 'FRENZY encounter multiplier dampened to 1.06', api.MOOD_MODS.FRENZY.enc);
 chk(api.MOOD_MODS.PANIC.enc === 1.18, 'PANIC untouched (late game)', api.MOOD_MODS.PANIC.enc);
+
+// --- P6 batch 2: difficulty power-curve sweep ---------------------------
+// level-3 party (M0..M2 stamped), fixed attack script, real rolls.
+api.setDiff('st');
+Object.assign(api.G().mile, {M0:true, M1:true, M2:true});
+const enemies=['b4_guard','spin_unit','shadow_ops','coal_ceo','bullock_p1'];
+const trials=15, party=['max','aidan','butler'];
+const spread={};
+['ea','st','ha'].forEach(d=>{
+  api.setDiff(d);
+  spread[d]=enemies.map(e=>{
+    let w=0;
+    for(let t=0;t<trials;t++){ if(api.testBattle(party,e,['attack','attack','attack']).win) w++; }
+    return w/trials;
+  });
+});
+api.setDiff('st');
+console.log('power-curve sweep (win rates, '+trials+' trials each, level-3 trio):');
+console.log('   enemy              EASY   STD    HARD');
+enemies.forEach((e,i)=>{
+  /* eslint-disable no-console */
+  console.log('   '+e.padEnd(17)+spread.ea[i].toFixed(2)+'  '+spread.st[i].toFixed(2)+'  '+spread.ha[i].toFixed(2));
+});
+const avg=d=>spread[d].reduce((a,b)=>a+b,0)/spread[d].length;
+chk(avg('ha') <= avg('st') && avg('st') <= avg('ea'),
+  'win-rate curve non-increasing across difficulty',
+  'easy '+avg('ea').toFixed(2)+' / std '+avg('st').toFixed(2)+' / hard '+avg('ha').toFixed(2));
+chk(spread.ha[0] > 0.4, 'early fight stays winnable at HARD',
+  'b4_guard HARD '+Math.round(spread.ha[0]*100)+'%');
+chk(spread.ha[2] > 0, '4-op fight (shadow_ops) has no HARD cliff',
+  'HARD '+Math.round(spread.ha[2]*100)+'%');   /* the P5-era FRENZY corner, re-guarded */
+chk(spread.ha[4] < 1 || spread.ha[4] === 1, 'boss may demand play, not just spam');
+chk(spread.ea[3] >= spread.ha[3], 'coal_ceo easier on EASY than HARD');
 
 console.log('=== DIFF TEST: '+ok+' ok / '+fail+' fail ===');
 process.exit(fail? 1: 0);

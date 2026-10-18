@@ -214,8 +214,11 @@ exact required filenames (case-sensitive).
 ### Session: P6 batch 1 — difficulty, smoother, stingers, Bessock cameo
 
 - **Title-screen difficulty (EASY / STANDARD / HARD):**
-  - `DIFFS` TWEAK table: foe HP+ATK ×0.85 / ×1 / ×1.15, encounter-curve
-    ×0.9 / 1 / 1.15, retreat-fee ×0.75 / 1 / 1.15, win-cash ×1.2 / 1 / 0.85.
+  - `DIFFS` TWEAK table: foe HP+ATK ×0.85 / ×1 / ×1.10, encounter-curve
+    ×0.9 / 1 / 1.10, retreat-fee ×0.75 / 1 / 1.15, win-cash ×1.2 / 1 / 0.85
+    (HARD started at 1.15/1.15; the batch-2 power-curve sweep showed a 0%-win
+    cliff from the two stacked multipliers, so it lands at 1.10/1.10 for a
+    ×1.21 combined instead of ×1.32. See batch 2 below.)
   - Pick persists pre-game in `localStorage['bcrpg_diff']` (survives
     reloads), lands in `G.diff` at `startGame` via `freshState`, backfilled
     to `st` for saves older than the feature (`continueGame`).
@@ -245,6 +248,49 @@ exact required filenames (case-sensitive).
     `ECON.enc()` per diff, foe maxhp/atk monotone across diffs, fee/reward
     curve in table, chip UI wiring, FRENZY 1.06 / PANIC 1.18.
   - Parse OK, scene refs OK, CJK clean.
+
+### Session: P6 batch 2 — battle-panel polish, audio kit, power-curve sweep
+
+- **Battle panel visual polish (`renderBattle`):**
+  - Foe rows: dashed frame + animated HP **bars** (red under 40%), down
+    rows dimmed with a `.down` class; party line kept, log switched to
+    `.logfine` with the newest line highlighted (`.lognew` fade-in —
+    a readable live-ticker feel on the evidence board).
+  - **Boss banner:** gold `⚑ BOSS FIGHT — <name>` bar pinned above the
+    foe rows when any boss is on the field (`BATTLE.boss`), synced to
+    clients via the existing `syncBox` — zero new messages needed.
+  - Text content (HP %, statuses, party line) byte-identical to before;
+    purely presentational wrappers. `--gold` reused (no new theme vars).
+- **Audio kit expanded (`stinger` cues + `cueCrew` relay):**
+  - New cues: `fight` (battle start), `boss` (low ominous tritone),
+    `ko` (first casualty per fight — `BATTLE._koCued` guard so a wipe is
+    one thud, not four), `item` (shop purchase flourish).
+  - `cueCrew(name)` plays locally and `NET.bcast({t:'cue', name})`s to the
+    crew; new `recv case 'cue'` plays the same stinger on clients.
+    Wired: `beginBattle` (fight/boss by boss flag), `hitParty` KO branch,
+    shop buy. Main battle text cues (rbeat win/lose, ms milestone,
+    ending verdict) were already crew-safe from batch 1.
+- **Power-curve sweep (added to `dev/diff_test.js`):**
+  - 15-trial testBattle sweep of a fixed level-3 trio across EASY/STD/
+    HARD for b4_guard, spin_unit, shadow_ops (the 4-op fight), coal_ceo
+    and bullock_p1.
+  - First run caught a genuine tuning cliff: HARD's then-1.15 foe × 1.15
+    encounter stack produced 0% wins for shadow_ops and bullock_p1 under
+    plain attack-spam. HARD softened to foe 1.10 / enc 1.10 (combined
+    ×1.21); shadow_ops back to 100% winnable at HARD, b4_guard/spin_unit/
+    coal_ceo fine everywhere, bullock_p1 still 0% under spam-only —
+    correct: the finale boss should demand bench, items and skills.
+  - Harness now 20/20: monotone non-increasing win curve, no HARD cliff
+    on regular encounters, chip/knob checks unchanged.
+- **Battery re-run:** `dev/playtest.js` 14/14 verdicts, 0 findings (164/
+  165 battles — the single miss is the driver retrying a cracked site, no
+  error); `dev/mp_test.js` 12/12 crews to synced verdicts, 0 errors, 3/12
+  grind-warns (all vs `shadow_ops`; crews recovered to synced endings —
+  the scripted 2-crew driver has no real-player layers of ACCORD/bench/
+  ops, and the FRENZY enc damping from batch 1 smoothing already helps the
+  verdict path; recorded as accepted residual, watch not error);
+  `dev/diff_test.js` 20/20; parse OK, scene refs OK, CJK clean.
+
 
 
 ### Session: automated playtester + first findings
