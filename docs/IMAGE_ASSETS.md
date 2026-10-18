@@ -34,7 +34,7 @@ Hub strip, and dialogue (`pid:` tag on `{t:'say'}` blocks).
 
 | File | Status | Suggested use |
 |---|---|---|
-| `bessock.png` | Unwired | Cast was cut by decision ("Bessock cut" in the plan). Candidates: cameo in the Newsroom scene, a rival portrait, or a MADE-door glimpse; otherwise safe to archive. |
+| `bessock.png` | **Wired — P6** | Cameo in the Newsroom scene (`pid:'bessock'`, water-cooler pundit, 2 lines). No longer unwired. |
 
 *(As of P4, `chalmers.png` has been wired to the Shadow Spokes-Treasurer boss
 scenes — moved out of this table.)*

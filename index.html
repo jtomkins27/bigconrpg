@@ -159,6 +159,12 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .tag{color:var(--dim);letter-spacing:.28em;font-size:12px;text-transform:uppercase}
 .rule{width:260px;height:1px;background:var(--red2);margin:22px auto}
 #titlebox .btns{display:flex;flex-direction:column;gap:10px;width:250px;margin:0 auto}
+#titlebox .diffrow{margin:0 auto 6px;color:var(--dim);font-size:11px;letter-spacing:.2em}
+#titlebox .diffrow button{font-family:inherit;font-size:10px;letter-spacing:.16em;color:var(--dim);
+  background:none;border:1px solid var(--line);padding:3px 8px;margin-left:4px;cursor:pointer}
+#titlebox .diffrow button:hover{border-color:var(--red2)}
+#titlebox .diffrow button.on{color:var(--red);border-color:var(--red2);background:rgba(255,60,60,.08)}
+#dNote{margin:0 auto 14px;color:#555160;font-size:10px;letter-spacing:.12em}
 #titlebox .foot{margin-top:30px;color:#555160;font-size:11px;letter-spacing:.14em}
 
 /* PC select */
@@ -237,6 +243,10 @@ button:disabled{opacity:.35;cursor:not-allowed}
     <h1>BIGCON RPG<br><b>BONDMAGEDDON</b></h1>
     <div class="tag">Turn-Based Fiscal Treason · P5 Build — Accords, Verdicts &amp; Helicopters</div>
     <div class="rule"></div>
+    <div class="diffrow">DIFFICULTY:
+      <button id="dEA">EASY</button><button id="dST" class="on">STANDARD</button><button id="dHA">HARD</button>
+    </div>
+    <div id="dNote">the published settings — satire intact</div>
     <div class="btns">
       <button id="btnNew">▶ &nbsp;NEW GAME</button>
       <button id="btnCont" disabled>▶ &nbsp;CONTINUE</button>
@@ -344,6 +354,7 @@ const PORTRAITS={
   jason:A+'Jason%20(1).png', lucian:A+'Lucian.png', tan:A+'tan.png',
   bullock:A+'bullock.png',   /* FINAL BOSS; dialogue lands in P5 */
   chalmers:A+'chalmers.png', /* THE SHADOW SPOKES-TREASURER — fiscal boss, P4 */
+  bessock:A+'bessock.png',   /* P6 cameo: newsroom water-cooler pundit */
 };
 const ROSTER=['butler','max','aidan','lane','simring','swain','kiran','jason','lucian','tan'];
 const CANDIDATES=['butler','max','aidan','lane','simring','swain','kiran','jason','lucian','tan']; // PC-select pool (Bessock cut)
@@ -1001,6 +1012,10 @@ SCENES['zs_newsroom']={zone:'— THE NEWSROOM —',blocks:[
   {t:'say', who:'SIMRING', pid:'simring',
     text:'The trick isn’t leaking — anyone can leak. The trick is deciding WHAT WAS LEAKED, then reporting on it yourself in the third person. Watch: “sources say”.'},
   {t:'say', who:'DIARY ROOM (HALF-HEARD)', text:'“…and if the faction can hold the lobby, they can hold a headline. I want in before the headline decides its own cast.”', silh:true},
+  {t:'say', who:'BESSOCK (BY THE WATER COOLER)', pid:'bessock',
+    text:'“I once fact-checked a coup. It was cut for length. Everything is cut for length.”'},
+  {t:'say', who:'BESSOCK', pid:'bessock',
+    text:'“If your scandal needs a source, I am suspiciously free. And they let me file last-minute copy, which makes me the only journalist in history who qualifies.”'},
   {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
     prompt:'A face from the competition is watching from the diary-room glass:',
     say:'“I have saved two careers by rephrasing one sentence. Imagine what I can do for a war.”'},
@@ -1220,14 +1235,33 @@ let G=null;
 const MOOD_MODS={
   CALM:  {shop:1.00, sell:2, enc:1.00, open:{}},                 /* neutral tape */
   BOOM:  {shop:0.85, sell:2, enc:1.00, open:{cash:15}},          /* prices down, opening bonus cash */
-  FRENZY:{shop:1.10, sell:3, enc:1.10, open:{cort:1, intel:1}},  /* ten-percent swings; adrenaline */
+  FRENZY:{shop:1.10, sell:3, enc:1.06, open:{cort:1, intel:1}},  /* ten-percent swings; adrenaline (P6: enc 1.10→1.06 — thin crews kept coin-flipping the 4-op fights) */
   PANIC: {shop:1.30, sell:4, enc:1.18, open:{intel:3}}           /* expensive, violent, finally intel-rich */
 };
 const ECON={
   shopMult:()=> MOOD_MODS[G.mood].shop,
   sellRate:()=> MOOD_MODS[G.mood].sell,
-  enc:()=> MOOD_MODS[G.mood].enc
+  enc:()=> MOOD_MODS[G.mood].enc * (DIFFS[G.diff]||DIFFS.st).enc
 };
+/* ===P6 TWEAK TABLE: title-screen difficulty (EASY/STANDARD/HARD). The host's
+   pick lives in G.diff and the whole crew inherits it via the {t:'g'} sync.
+   foe   — scales foe HP and ATK in mkFoeUnit()
+   enc   — multiplies the encounter power curve
+   loss  — scales the retreat (withdrawal-fee) fraction
+   reward— scales battle win cash */
+const DIFFS={
+  ea:{n:'EASY',     foe:0.85, enc:0.9,  loss:0.75, reward:1.2},
+  st:{n:'STANDARD', foe:1,    enc:1,    loss:1,    reward:1},
+  ha:{n:'HARD',     foe:1.15, enc:1.15, loss:1.15, reward:0.85}
+};
+const DIFF_NOTE={
+  ea:'foes −15% · gentler tape · kinder fees',
+  st:'the published settings — satire intact',
+  ha:'foes +15% · steeper tape · thinner payouts'
+};
+function selDiff(){
+  try{ return localStorage.getItem('bcrpg_diff')||'st'; }catch(e){ return 'st'; }
+}
 /* ===TWEAK TABLE: rival rotation (first-eligible wins) === */
 const RIVAL_ORDER=['simring','max','tan','lucian'];
 /* ===TWEAK TABLE: zone travel targets === */
@@ -1255,6 +1289,7 @@ function freshState(pcid){
     upgrades:{},   /* P3: bug pinned, dossier pinned etc. */
     st:{},         /* P2: persistent hp/mp per roster member */
     mood:'CALM',
+    diff: selDiff(),   /* P6: title-screen difficulty, carried in the save + {t:'g'} sync */
     deckPos:0,
     scene:null, block:0,
     log:[], muted:false,
@@ -1317,6 +1352,30 @@ function beep(kind){
   }catch(e){}
 }
 
+/* — P6: three/four-note WebAudio stingers. No assets, all chiptune dignity.
+   Clients hear these too: result beats carry the cue name in m.cue. — */
+function stinger(name){
+  if(!G || G.muted) return;
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended') AC.resume();
+    const lines={
+      win:    [[392,0,.12],[494,.11,.12],[587,.22,.22]],           /* site secured */
+      lose:   [[330,0,.14],[294,.14,.14],[233,.28,.30]],           /* withdrawal fee */
+      mile:   [[262,0,.1],[330,.1,.1],[392,.2,.1],[523,.3,.28]],   /* crisis advances */
+      verdict:[[440,0,.12],[554,.12,.12],[659,.24,.12],[880,.36,.4]] /* ending fanfare */
+    };
+    (lines[name]||[]).forEach(n=>{
+      const o=AC.createOscillator(), g=AC.createGain();
+      o.type='square'; o.frequency.setValueAtTime(n[0],AC.currentTime+n[1]);
+      g.gain.setValueAtTime(.02,AC.currentTime+n[1]);
+      g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+n[1]+n[2]);
+      o.connect(g); g.connect(AC.destination);
+      o.start(AC.currentTime+n[1]); o.stop(AC.currentTime+n[1]+n[2]+.02);
+    });
+  }catch(e){}
+}
+
 /* — toasts & resource application — */
 function toast(x,cls){
   if(NET.role==='host'&&NET.started) NET.bcast({t:'toast', x, cls:cls||''});
@@ -1343,7 +1402,7 @@ function advanceMilestone(m,phase,phaseName,sub){
   if(m && G.mile[m]!==undefined) G.mile[m]=true;
   unlockZones(m,phase);
   log('MILESTONE '+m+' → '+phaseName);
-  beep('bad');
+  stinger('mile');   /* P6: replaces the flat error beep */
   $('mstoneBig').textContent=(m||'M?')+' — CRISIS ADVANCES';
   $('mstoneSub').textContent=
     'PHASE '+phase+': '+phaseName+' — encounters ratchet, shop prices swell, intel gets dearer.'+
@@ -1977,7 +2036,8 @@ function mkPartyUnit(id){
 function mkFoeUnit(eid,i,n){
   const g=ENEMIES[eid]||{}, s=ENEMY_STATS[eid]||{}, lv=Math.max(1,G.phase-1);
   const bug=BF_BUG||1;   /* planted bug: foe ATK −25% for this battle */
-  const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)*ECON.enc()*bug) : base;
+  const dh=DIFFS[G.diff]||DIFFS.st;   /* P6: title-screen difficulty rides the same choke point */
+  const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)*ECON.enc()*bug*dh.foe) : base;
   return {
     side:'foe', eid, tag:(n>1? ' '+String.fromCharCode(65+i):''),
     name:(g.name||eid)+(n>1? String.fromCharCode(65+i):''),
@@ -2333,8 +2393,8 @@ function endBattle(win){
   if(NET.role==='host'&&NET.started) NET.bcast({t:'box', html:''});
   const w=document.createElement('div'); w.className='beat';
   if(win){
-    const r=BATTLE.rewards, rh=Math.round((TUNING.ratchet.reward*Math.max(1,G.phase-1)+1)*100)/100;
-    const cash=Math.round((r.cash||0)*rh), intel=r.intel||0, cort=(r.cort||0);
+    const dh=DIFFS[G.diff]||DIFFS.st, r=BATTLE.rewards, rh=Math.round((TUNING.ratchet.reward*Math.max(1,G.phase-1)+1)*100)/100;
+    const cash=Math.round((r.cash||0)*rh*dh.reward), intel=r.intel||0, cort=(r.cort||0);
     applyEffects({cash, intel, cort, note:'BATTLE WON: '+((ENEMIES[BATTLE.b.id]||{}).name||'')});
     /* post-battle recovery */
     BATTLE.team.forEach(u=>{
@@ -2352,7 +2412,8 @@ function endBattle(win){
     /* multiplayer: the committee splits the withdrawal tab (half fee) —
        two players share one supply budget and must not death-spiral */
     const split=(NET.role==='host'&&NET.started)? 0.5 : 1;
-    const loss=Math.round(G.cash*TUNING.lossCashPenalty*split);
+    const dh=(DIFFS[G.diff]||DIFFS.st);
+    const loss=Math.round(G.cash*TUNING.lossCashPenalty*split*dh.loss);
     G.cash-=loss;
     BATTLE.team.forEach(u=>{ u.hp=Math.round(u.maxhp*0.5); u.mp=Math.round(u.maxmp*0.5); u.down=false; });
     persistUnits();
@@ -2363,7 +2424,7 @@ function endBattle(win){
     NET.syncG();   /* crew: the fee lands before the CONTINUE click */
   }
   if(NET.role==='host'&&NET.started)
-    NET.beat({t:'rbeat', html:w.innerHTML, win:!!win});
+    NET.beat({t:'rbeat', html:w.innerHTML, win:!!win});   /* clients play their own cue in recv() */
   const ok=document.createElement('button'); ok.textContent='CONTINUE';
   const won=win;
   const contFn=()=>{
@@ -2620,7 +2681,7 @@ function showEnding(key){
       pts>=60? ' — a workable inquiry with quotable uglier parts.':
       ' — the inquiry will call it “a learning experience” and bill you.');
   log('VERDICT: '+fam.name+' ('+pts+'/123)');
-  beep('stamp'); save(true);
+  beep('stamp'); stinger('verdict'); save(true);
   if(NET.role==='host'&&NET.started) NET.bcast({t:'ending', key});
   openOv('endov');
 }
@@ -3203,6 +3264,7 @@ NET.recv=function(m){
       const st=$('stage');
       const w=document.createElement('div'); w.className='beat';
       w.innerHTML=m.html;
+      if(G) stinger(m.win? 'win':'lose');   /* P6: crew hears the result too */
       const ok=document.createElement('button'); ok.textContent='CONTINUE';
       ok.onclick=()=>{ beep('tick'); NET.send({t:'cont'}); ok.remove(); };
       w.appendChild(ok); st.appendChild(w); st.scrollTop=st.scrollHeight;
@@ -3231,7 +3293,7 @@ NET.recv=function(m){
       $('mstoneSub').textContent=
         'PHASE '+m.phase+': '+m.phaseName+' — encounters ratchet, shop prices swell, intel gets dearer.'+
         (m.sub? '\n'+m.sub : '');
-      openOv('mstone'); beep('bad');
+      openOv('mstone'); stinger('mile');
       break;
     }
     case 'ev': {
@@ -3444,6 +3506,7 @@ function startGame(pcid){
 function continueGame(){
   const s=loadSave(); if(!s) return;
   G=s;
+  if(!G.diff) G.diff='st';   /* P6: backfill saves from before difficulty existed */
   renderHUD(); show('world');
   gotoScene(G.scene||'hub', true);
 }
@@ -3460,6 +3523,22 @@ $('btnMute').onclick=()=>{
 };
 $('selBtn').onclick=()=>{ if(!selPick) return; beep('coin'); closeOv('selov'); startGame(selPick); };
 $('selCancel').onclick=()=>{ beep('tick'); closeOv('selov'); };
+
+/* — P6: difficulty chips. The pick is stored pre-game (survives reloads) and
+   lands in G.diff at startGame; MP crews inherit the host's pick via sync. — */
+function setDiffUI(k){
+  ['dEA','dST','dHA'].forEach(id=>$(id).classList.remove('on'));
+  $(k==='ea'? 'dEA': k==='ha'? 'dHA':'dST').classList.add('on');
+  $('dNote').textContent=DIFF_NOTE[k]||DIFF_NOTE.st;
+}
+[['dEA','ea'],['dST','st'],['dHA','ha']].forEach(([id,k])=>{
+  $(id).onclick=()=>{
+    beep('tick');
+    try{ localStorage.setItem('bcrpg_diff',k); }catch(e){}
+    setDiffUI(k);
+  };
+});
+setDiffUI(selDiff());
 
 (function boot(){
   const s=loadSave();
@@ -3486,6 +3565,8 @@ window.BCRPG={
   /* P3 market APIs */
   EVENTS, MOOD_MODS, ECON, drawEventCard,
   setMood:m=>{ G.mood=m; renderHUD(); save(true); },
+  /* P6 difficulty API (dev/tests) */
+  DIFFS, setDiff:k=>{ G.diff=k; },
   /* P5 verdict APIs (dev/tests) */
   verdict:computeVerdict, ending:showEnding,
   mile:(id)=>{ advanceMilestone(id, G.phase, G.phaseName, 'DEV milestone'); save(true); },
@@ -3493,6 +3574,8 @@ window.BCRPG={
   ENEMIES,
   /* live battle introspection (tests) */
   battle:()=>BATTLE,
+  /* P6: foe factory (tests) — see difficulty scaling directly */
+  mkFoe:(eid,i,n)=>{ ensurePartyStats(); return mkFoeUnit(eid,i||0,n||1); },
   /* crew multiplayer (dev/tests): host/join with a FakePeer in harnesses */
   net:{
     host:code=>NET.hostLobby(code),

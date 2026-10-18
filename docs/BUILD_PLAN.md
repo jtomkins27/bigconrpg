@@ -187,6 +187,66 @@ exact required filenames (case-sensitive).
   repeatedly before clawing back; real players have ACCORD/bench/ops and
   won't grind like a random script.
 
+> **Status P4+P5+P5.5:** all of the above is committed & pushed to
+> `origin/main` as `0463be9` (2026-10-18). `dev/mp_test.js` battery:
+> 12/12 crews to synced verdicts, disconnect test green, desync-free.
+> Solo: `dev/playtest.js` 14/14 + `bcrpg_test`/`bcrpg_p5` harnesses green.
+> **Still manual:** one real-browser smoke of the PeerJS cloud broker
+> (open `index.html` twice → HOST + JOIN with the same 5-char code) —
+> the harness covers logic over a fake bus, not the live CDN path.
+
+### Next up — P6, in batches
+
+1. **Difficulty select on the title screen** (EASY / STANDARD / HARD):
+   a `diff` field in the save scales foe stats + encounter mood spikes at
+   the mkUnit choke point and nudges rewards; backfill old saves to
+   `st` (standard). Difficulty is engine-global so MP crews inherit
+   whatever the host picked (auto-syncs via `{t:'g'}`).
+2. **Balance smoother (P6 pass 1):** damp the FRENZY encounter multiplier
+   that makes the scripted 4-operative fights coin-flips for thin
+   parties; re-validate with both harnesses.
+3. **Richer audio beyond `beep()`:** small WebAudio stingers (battle
+   win/loss, milestone, verdict fanfare) — no external assets.
+4. **`bessock.png` cameo** (last cut-cast asset): one cameo block in the
+   Newsroom scene; unwired files stay silhouette-safe by design.
+5. Final: full battery re-run + commit/push.
+
+### Session: P6 batch 1 — difficulty, smoother, stingers, Bessock cameo
+
+- **Title-screen difficulty (EASY / STANDARD / HARD):**
+  - `DIFFS` TWEAK table: foe HP+ATK ×0.85 / ×1 / ×1.15, encounter-curve
+    ×0.9 / 1 / 1.15, retreat-fee ×0.75 / 1 / 1.15, win-cash ×1.2 / 1 / 0.85.
+  - Pick persists pre-game in `localStorage['bcrpg_diff']` (survives
+    reloads), lands in `G.diff` at `startGame` via `freshState`, backfilled
+    to `st` for saves older than the feature (`continueGame`).
+  - Single choke points: `mkFoeUnit` (`dh.foe` rides the existing
+    `sc()` line) and `ECON.enc()` (multiplies the mood `enc` modifier);
+    win-cash and the withdrawal fee read `dh.reward`/`dh.loss` in
+    `endBattle`.
+  - Title chips + one-line note under the rule row; MP crews inherit the
+    host's pick for free through the `{t:'g'}` full-state sync.
+  - New dev hook: `BCRPG.mkFoe(eid)` (foe factory for stat tests).
+- **Balance smoother:** FRENZY encounter multiplier 1.10 → 1.06 (thin
+  crews kept coin-flipping the scripted 4-operative fights). PANIC left
+  at 1.18 — by then the party should be levelled and rostered.
+- **Audio stingers:** `stinger(name)` — 3–4-note square-wave WebAudio
+  cues, no assets: `win` (site secured), `lose` (withdrawal fee),
+  `mile` (crisis advances, replaces the flat error beep, host + client
+  `{t:'ms'}`), `verdict` (ending fanfare, fires in `showEnding` for host
+  and client; the client path needed no extra message since it funnels
+  through the same function).
+- **Bessock cameo:** BESSOCK is a water-cooler pundit in the Newsroom
+  scene (2 lines, `pid:'bessock'`); PORTRAITS wired to
+  `assets/characters/bessock.png`. The last unwired portrait is now used.
+- **Verification (all green):**
+  - `dev/playtest.js` 14/14 verdicts, 0 findings, 165/165 battles won.
+  - `dev/mp_test.js` 8/8 crews reach synced verdicts, 0 errors.
+  - New `dev/diff_test.js`: 15/15 — fresh-save default `st`,
+    `ECON.enc()` per diff, foe maxhp/atk monotone across diffs, fee/reward
+    curve in table, chip UI wiring, FRENZY 1.06 / PANIC 1.18.
+  - Parse OK, scene refs OK, CJK clean.
+
+
 ### Session: automated playtester + first findings
 
 - **`dev/playtest.js` built and battle-hardened:** 14/14 headless runs now
