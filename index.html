@@ -1,0 +1,3678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BIGCON RPG: BONDMAGEDDON — P6-MP</title>
+<!-- PeerJS (WebRTC) — crew multiplayer on any static host; solo runs without it -->
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<!--
+  BIGCON RPG: BONDMAGEDDON — P5 build (rivals + Bullock finale + endings + MADE)
+  Sections: [1] CSS · [2] HTML · [3] DATA · [4] ENGINE · [5] UI · [6] BOOT/DEV
+  Phase roadmap (plan file):
+    P0 skeleton + PC select + scene engine + HUD + saves   (this file)
+    P1 Sydney Act 1 + first battles + shop
+    P2 full combat engine
+    P3 events/mood/intel/cortisol
+    P4 Canberra + fiscal boss + Mandate
+    P5 rivals + Bullock finale + endings + MADE
+    P6 balance/audio/polish
+-->
+<style>
+/* ============================================================
+   [1] CSS — dark evidence-board skin
+   ============================================================ */
+:root{
+  --ink:#e8e2d4; --dim:#a89f8c; --board:#111013; --panel:#1c1a22; --panel2:#242130;
+  --line:#3a3444; --red:#c9362e; --red2:#8f241f; --gold:#e0b13c;
+  --intel:#6fc2a5; --cort:#e2643f;
+  --mono:"Consolas","Lucida Console",ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--board);color:var(--ink);font-family:var(--mono);font-size:15px;
+  line-height:1.55;overflow:hidden}
+button{font-family:var(--mono);color:var(--ink);background:var(--panel2);
+  border:1px solid var(--line);padding:8px 14px;cursor:pointer;font-size:14px}
+button:hover{border-color:var(--gold);color:#fff}
+button:disabled{opacity:.35;cursor:not-allowed}
+
+#bstring{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.13}
+#bstring line{stroke:var(--red);stroke-width:1.2}
+#bstring circle{fill:var(--red)}
+#glow{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(1100px 650px at 30% 18%,#2a2330 0%,transparent 60%),
+  radial-gradient(900px 600px at 82% 85%,#231c22 0%,rgba(0,0,0,0) 70%);}
+
+.scr{position:fixed;inset:0;z-index:2;display:none;flex-direction:column}
+.scr.on{display:flex}
+
+.chip{display:inline-block;border:1px solid var(--line);padding:1px 8px;font-size:12px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.chip.red{border-color:var(--red2);color:#ff8d84}
+.chip.gold{border-color:#6b5a22;color:var(--gold)}
+
+/* HUD */
+#hud{background:linear-gradient(var(--panel),#191722);border-bottom:1px solid var(--line);
+  padding:8px 14px 0;z-index:5}
+#hudtop{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#hudtitle{font-weight:bold;letter-spacing:.12em;color:var(--red);white-space:nowrap}
+#hudtitle span{color:var(--dim);font-weight:normal}
+#hclock{display:flex;gap:6px;align-items:center;margin-left:auto}
+.mchip{border:1px solid var(--line);color:var(--dim);font-size:11px;padding:1px 7px;letter-spacing:.06em}
+.mchip.done{background:var(--red2);color:#ffd9d6;border-color:var(--red)}
+.mchip.now{border-color:var(--gold);color:var(--gold)}
+#avail{display:grid;grid-template-columns:auto auto 1fr auto auto auto;margin-top:6px;
+  border:1px solid var(--line);background:#131118;align-items:center}
+.lbl{padding:5px 10px;color:var(--dim);border-right:1px solid var(--line);font-size:12px;
+  letter-spacing:.1em;white-space:nowrap}
+.val{padding:5px 10px;font-size:14px;white-space:nowrap}
+#vpips{display:flex;gap:3px;padding:7px 10px}
+.pip{width:14px;height:10px;border:1px solid #6b3527;background:#1d1216}
+.pip.on{background:var(--cort);border-color:#ff9b78;box-shadow:0 0 5px rgba(226,100,63,.5)}
+.pip.hot{background:#ff5a36}
+#vregime{letter-spacing:.1em}
+
+/* party strip */
+#party{display:flex;gap:8px;padding:10px 12px;background:var(--panel);
+  border-bottom:1px solid var(--line);flex-wrap:wrap;z-index:4}
+.pcard{display:flex;gap:8px;align-items:center;border:1px solid var(--line);
+  background:#131118;padding:4px 10px 4px 4px;min-width:150px}
+.pcard.pc0{border-color:var(--gold)}
+.pcard img{width:40px;height:40px;object-fit:cover;border:1px solid var(--line);background:#000;
+  filter:grayscale(.25) contrast(1.05)}
+.pcard .nm{font-size:13px;font-weight:bold}
+.pcard .cl{font-size:11px;color:var(--dim)}
+.benchcount{align-self:center;color:var(--dim);font-size:12px;margin-left:auto}
+
+/* world: spreadsheet shell */
+#worldgrid{flex:1;display:grid;grid-template-columns:1fr 300px;overflow:hidden}
+#stage{position:relative;overflow-y:auto;padding:34px 40px 60px;z-index:1}
+#stage::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:3;
+  background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.18) 3px 4px)}
+
+/* scene beats */
+.beat{max-width:760px;margin:0 auto 26px}
+.beat.kicker{color:var(--dim);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  border-bottom:1px dashed var(--line);padding-bottom:6px;margin-bottom:30px}
+.dline{display:flex;gap:14px;align-items:flex-start;max-width:760px;margin:0 auto 22px;
+  cursor:pointer;animation:fadein .18s ease-out}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
+.pframe{position:relative;width:76px;min-width:76px;height:76px}
+.pframe img{width:76px;height:76px;border:2px solid var(--line);background:#000;
+  filter:grayscale(.3) contrast(1.08);box-shadow:3px 3px 0 rgba(0,0,0,.4)}
+.pframe.pcself img{border-color:var(--gold)}
+.pframe .tape{position:absolute;top:-8px;left:50%;width:44px;height:14px;transform:rotate(-3deg);
+  background:rgba(232,226,212,.12);border:1px solid rgba(232,226,212,.18)}
+.pframe.silh img{display:none}
+.pframe.silh{background:#0a0910;border:2px solid var(--line)}
+.pframe.silh::before{content:"";position:absolute;left:16px;right:16px;top:14px;bottom:0;
+  border-radius:24px 24px 0 0;background:#171420;border:1px solid #2a2535;border-bottom:none}
+.pframe.silh::after{content:"?";position:absolute;bottom:0;left:0;right:0;text-align:center;
+  color:var(--dim);font-weight:bold}
+.dbody{flex:1}
+.dwho{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:3px}
+.dtext{white-space:pre-wrap}
+.dtext b{color:var(--red)}
+.adv{color:var(--dim);font-size:11px;letter-spacing:.2em;text-align:right;max-width:760px;
+  margin:0 auto;animation:blink 1.4s infinite}
+@keyframes blink{50%{opacity:.25}}
+.chwrap{max-width:760px;margin:8px auto;padding:10px 0}
+.chprompt{color:var(--gold);font-size:13px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+.chbtn{display:block;width:100%;text-align:left;margin-bottom:8px;padding:10px 14px}
+.chbtn .k{color:var(--dim);margin-right:8px}
+.chbtn small{display:block;color:var(--dim);font-size:12px}
+
+/* ops side panel */
+#ops{border-left:1px solid var(--line);padding:14px;overflow-y:auto;background:var(--panel)}
+#ops h3{font-size:12px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;
+  margin:14px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
+#ops h3:first-child{margin-top:0}
+#ops .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;
+  border-bottom:1px dotted rgba(255,255,255,.07)}
+#ops .muted{color:var(--dim)}
+.zonebtn{display:block;width:100%;text-align:left;margin-bottom:6px;font-size:13px;padding:7px 10px}
+
+/* toasts */
+#toasts{position:fixed;right:316px;top:10px;z-index:60;display:flex;flex-direction:column;
+  gap:6px;align-items:flex-end}
+.toast{background:var(--panel2);border:1px solid var(--gold);color:var(--gold);
+  padding:5px 12px;font-size:13px;animation:tfade 2.6s forwards}
+.toast.bad{border-color:var(--red);color:#ff958c}
+.toast.intel{border-color:var(--intel);color:var(--intel)}
+@keyframes tfade{0%{opacity:0;transform:translateY(-8px)}8%{opacity:1;transform:none}
+  80%{opacity:1}100%{opacity:0}}
+
+/* overlays */
+.overlay{position:fixed;inset:0;z-index:40;background:rgba(10,9,13,.82);backdrop-filter:blur(2px);
+  display:none;align-items:center;justify-content:center}
+.overlay.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);max-width:min(940px,94vw);
+  max-height:90vh;overflow-y:auto;padding:28px 34px;box-shadow:0 20px 70px rgba(0,0,0,.65)}
+.modal h2{letter-spacing:.2em;color:var(--red);font-size:20px;margin-bottom:6px;text-transform:uppercase}
+.modal .sub{color:var(--dim);font-size:12px;margin-bottom:18px}
+
+/* title */
+#title{align-items:center;justify-content:center;text-align:center}
+#titlebox h1{font-size:clamp(30px,7vw,60px);letter-spacing:.1em}
+#titlebox h1 b{color:var(--red)}
+.tag{color:var(--dim);letter-spacing:.28em;font-size:12px;text-transform:uppercase}
+.rule{width:260px;height:1px;background:var(--red2);margin:22px auto}
+#titlebox .btns{display:flex;flex-direction:column;gap:10px;width:250px;margin:0 auto}
+#titlebox .diffrow{margin:0 auto 6px;color:var(--dim);font-size:11px;letter-spacing:.2em}
+#titlebox .diffrow button{font-family:inherit;font-size:10px;letter-spacing:.16em;color:var(--dim);
+  background:none;border:1px solid var(--line);padding:3px 8px;margin-left:4px;cursor:pointer}
+#titlebox .diffrow button:hover{border-color:var(--red2)}
+#titlebox .diffrow button.on{color:var(--red);border-color:var(--red2);background:rgba(255,60,60,.08)}
+#dNote{margin:0 auto 14px;color:#555160;font-size:10px;letter-spacing:.12em}
+#titlebox .foot{margin-top:30px;color:#555160;font-size:11px;letter-spacing:.14em}
+
+/* PC select */
+#selgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:14px 0}
+@media(max-width:900px){#selgrid{grid-template-columns:repeat(2,1fr)}}
+.selcard{border:1px solid var(--line);background:#131118;padding:10px;cursor:pointer;
+  position:relative;text-align:left}
+.selcard:hover{border-color:var(--gold)}
+.selcard img{width:100%;height:110px;object-fit:cover;border:1px solid var(--line);background:#000}
+.selcard .nm{font-weight:bold;margin-top:8px}
+.selcard .cl{color:var(--gold);font-size:12px}
+.selcard .bl{color:var(--dim);font-size:11px;margin-top:6px;line-height:1.4}
+.selcard .sig{color:var(--intel);font-size:11px;margin-top:6px}
+.selcard.silh img{display:none}
+.selcard.silh{border:2px solid var(--line)}
+.selcard.silh::before{content:"";display:block;height:110px;background:#171420;
+  border-radius:34px 34px 0 0;margin:6px 18px 0;border:1px solid #2a2535;border-bottom:none}
+.selcard.silh::after{content:"?";position:absolute;top:36px;left:0;right:0;text-align:center;
+  color:var(--dim);font-weight:bold;font-size:26px}
+.selcard.picked{border-color:var(--gold);outline:2px solid rgba(224,177,60,.25)}
+.selcard.picked::after{content:"NOMINATED";position:absolute;top:8px;right:-6px;background:var(--red);
+  color:#fff;font-size:10px;padding:2px 8px;transform:rotate(5deg);z-index:2}
+
+/* milestone */
+#mstone .modal{text-align:center;border:2px solid var(--red)}
+#mstoneBig{font-size:clamp(26px,6vw,50px);color:var(--red);font-weight:bold;margin:10px 0;
+  animation:slam .35s}
+@keyframes slam{0%{transform:scale(2.4);opacity:0}70%{transform:scale(.94);opacity:1}100%{transform:scale(1)}}
+#mstoneSub{color:var(--dim);margin-bottom:20px;letter-spacing:.1em;max-width:560px}
+.savechip{position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:60;
+  background:rgba(14,13,18,.8);border:1px solid #2c2835;color:var(--dim);font-size:11px;
+  padding:2px 10px;letter-spacing:.15em;animation:tfade 2s forwards}
+
+/* battle stub */
+.bstub .enemyrow{display:flex;align-items:center;gap:10px;border:1px dashed var(--line);
+  padding:8px 12px;margin-bottom:8px;font-size:14px;max-width:560px}
+.bstub .enemyrow .hp{margin-left:auto;color:var(--dim);font-size:12px}
+.bstub .fine{color:var(--dim);font-size:12px;margin:12px 0 16px;line-height:1.6}
+
+/* battle panel (live engine, P2 · P6 polish: bars, boss banner, live log) */
+.enemyrow{display:flex;align-items:center;gap:10px;border:1px dashed var(--line);
+  padding:8px 12px;margin-bottom:6px;font-size:14px;max-width:560px}
+.enemyrow.down{opacity:.4}
+.enemyrow .hp{margin-left:auto;color:var(--dim);font-size:12px;white-space:nowrap}
+.enemyrow .bar{width:110px;height:6px;flex:none;background:#1b1723;border:1px solid var(--line)}
+.enemyrow .bar i{display:block;height:100%;transition:width .3s}
+.bossbar{border:1px solid var(--gold);color:var(--gold);padding:6px 12px;margin-bottom:8px;
+  letter-spacing:.24em;font-size:12px;max-width:560px;background:rgba(255,190,60,.05)}
+.logfine{color:var(--dim);font-size:12px;margin:10px 0 4px;line-height:1.6}
+.lognew{color:#fff;animation:fadein .25s}
+
+/* ---- P6 final visual sweep: hover polish across interactive surfaces ---- */
+.zonebtn{transition:border-color .15s,transform .15s,opacity .15s}
+.zonebtn::before{content:"▸ ";color:var(--red2);font-weight:bold}
+.zonebtn.locked{opacity:.45;border-style:dashed}
+.zonebtn:not(:disabled):hover{border-color:var(--gold);transform:translateX(3px)}
+.chbtn{transition:transform .12s}
+.chbtn:hover{transform:translateX(4px)}
+.pcard{transition:background .15s}
+.pcard:hover{background:#1c1926}
+.shoprow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;
+  border-bottom:1px dotted rgba(255,255,255,.1);transition:background .15s}
+.shoprow:hover{background:rgba(224,177,60,.05)}
+.toast{box-shadow:0 4px 18px rgba(0,0,0,.45)}
+.overlay.on .modal{animation:slam .25s}
+#titlebox h1{text-shadow:0 0 28px rgba(201,54,46,.35)}
+
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line)}
+::-webkit-scrollbar-track{background:#131118}
+
+/* ---- crew lobby (multiplayer) ---- */
+#mpov input{background:#141118;border:1px solid var(--line);color:var(--ink);
+  padding:8px 10px;border-radius:4px;font-family:inherit;font-size:14px;letter-spacing:2px}
+#mpList .mprow{display:flex;justify-content:space-between;max-width:520px;margin:0 auto;
+  padding:4px 0;border-bottom:1px dotted rgba(255,255,255,.12);font-size:14px}
+.mpbadge{color:var(--gold);font-size:12px;letter-spacing:1px}
+#mpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:8px;max-width:820px;margin:12px auto}
+#mpGrid .selcard{cursor:pointer;padding:8px;font-size:12px}
+#mpGrid .selcard.taken{opacity:.3;cursor:not-allowed;pointer-events:none}
+#mpGrid .selcard.picked{outline:2px solid var(--gold)}
+</style>
+</head>
+<body>
+
+<svg id="bstring" width="100%" height="100%" preserveAspectRatio="none">
+  <line x1="8%" y1="20%" x2="30%" y2="60%"/><line x1="30%" y1="60%" x2="12%" y2="82%"/>
+  <line x1="30%" y1="60%" x2="55%" y2="30%"/><line x1="55%" y1="30%" x2="48%" y2="70%"/>
+  <line x1="48%" y1="70%" x2="70%" y2="55%"/><line x1="70%" y1="55%" x2="88%" y2="18%"/>
+  <line x1="70%" y1="55%" x2="86%" y2="85%"/><line x1="48%" y1="70%" x2="64%" y2="92%"/>
+  <line x1="55%" y1="30%" x2="90%" y2="40%"/>
+  <circle cx="8%" cy="20%" r="3"/><circle cx="30%" cy="60%" r="3"/><circle cx="12%" cy="82%" r="3"/>
+  <circle cx="55%" cy="30%" r="3"/><circle cx="48%" cy="70%" r="3"/><circle cx="70%" cy="55%" r="3"/>
+  <circle cx="88%" cy="18%" r="3"/><circle cx="86%" cy="85%" r="3"/><circle cx="64%" cy="92%" r="3"/>
+  <circle cx="90%" cy="40%" r="3"/>
+</svg>
+<div id="glow"></div>
+
+<!-- ============ [2] HTML ============ -->
+
+<div class="scr on" id="title">
+  <div id="titlebox">
+    <h1>BIGCON RPG<br><b>BONDMAGEDDON</b></h1>
+    <div class="tag">Turn-Based Fiscal Treason · P5 Build — Accords, Verdicts &amp; Helicopters</div>
+    <div class="rule"></div>
+    <div class="diffrow">DIFFICULTY:
+      <button id="dEA">EASY</button><button id="dST" class="on">STANDARD</button><button id="dHA">HARD</button>
+    </div>
+    <div id="dNote">the published settings — satire intact</div>
+    <div class="btns">
+      <button id="btnNew">▶ &nbsp;NEW GAME</button>
+      <button id="btnCont" disabled>▶ &nbsp;CONTINUE</button>
+      <button id="btnHost">◉ &nbsp;HOST A CREW</button>
+      <button id="btnJoin">◉ &nbsp;JOIN A CREW</button>
+      <button id="btnMute">♪ &nbsp;SOUND: ON</button>
+    </div>
+    <div class="foot">NO DICE. THE DICE WERE RIGGED FROM THE START.</div>
+  </div>
+</div>
+
+<div class="scr" id="world">
+  <div id="hud">
+    <div id="hudtop">
+      <div id="hudtitle">BONDMAGEDDON <span id="chname"></span></div>
+      <span class="chip red" id="phasechip">PHASE ?</span>
+      <div id="hclock"></div>
+    </div>
+    <div id="avail">
+      <div class="lbl">CASH 💰</div><div class="val" id="vcash">$0</div>
+      <div class="lbl">CORT 🔥</div><div id="vpips"></div>
+      <div class="lbl">INTEL 🛈</div><div class="val" id="vintel">0</div>
+      <div class="lbl">MAND</div><div class="val" id="vmand">0/2</div>
+      <div class="chip gold" id="vregime">MOOD: CALM</div>
+    </div>
+  </div>
+  <div id="party"></div>
+  <div id="worldgrid">
+    <div id="stage"></div>
+    <div id="ops"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<div class="overlay" id="selov"><div class="modal">
+  <h2>Nominate Your Candidate</h2>
+  <div class="sub">Ten finalists of the Monetary Policy Competition. One survives the news cycle.
+    The other nine: recruitable story allies, rival bosses, or a pretty good sandwich.</div>
+  <div id="selgrid"></div>
+  <div style="display:flex;gap:10px;margin-top:16px">
+    <button id="selBtn" disabled>LOCK IN CANDIDATE</button>
+    <button id="selCancel">BACK</button>
+  </div>
+</div></div>
+
+<div class="overlay" id="mstone"><div class="modal">
+  <div class="chip red">MILESTONE REACHED</div>
+  <div id="mstoneBig"></div>
+  <div id="mstoneSub"></div>
+  <button id="mstoneOk">THE CLOCK TICKS</button>
+</div></div>
+
+<div class="overlay" id="evov"><div class="modal" style="border-color:#b18cff">
+  <div class="chip red">MARKET EVENT</div>
+  <div id="evName" style="font-size:clamp(22px,5vw,40px);font-weight:bold;margin:10px 0;color:#b18cff"></div>
+  <div id="evLine" style="color:var(--dim);margin-bottom:12px;max-width:560px"></div>
+  <div id="evFx" class="sub" style="max-width:560px"></div>
+  <button id="evOk">THE MARKET REACTS</button>
+</div></div>
+
+<div class="overlay" id="endov"><div class="modal" style="border-color:var(--gold)">
+  <div class="chip gold">THE INQUIRY CONCLUDES — VERDICT</div>
+  <div id="endName" style="font-size:clamp(26px,6vw,48px);font-weight:bold;margin:12px 0;color:var(--gold)"></div>
+  <div id="endLine" style="color:var(--ink);margin-bottom:14px;max-width:640px;line-height:1.6"></div>
+  <div id="endScore" class="sub" style="max-width:640px"></div>
+  <button id="endOk">ROLL THE CREDITS</button>
+</div></div>
+
+<div class="overlay" id="stov"><div class="modal">
+  <h2 id="stTitle"></h2><div class="sub" id="stSub"></div>
+  <div id="stBody" style="margin-bottom:18px;line-height:1.7;font-size:14px"></div>
+  <button id="stClose">CLOSE &nbsp;(ESC)</button>
+</div></div>
+
+<div class="overlay" id="mpov"><div class="modal">
+  <h2>THE CREW LOBBY</h2>
+  <div class="sub" id="mpStatus">Peer-to-peer over WebRTC (PeerJS). The host runs the campaign; everyone controls their own character. Works on any static site.</div>
+  <div id="mpJoinRow" style="display:none;gap:8px;justify-content:center;margin:12px 0;flex-wrap:wrap">
+    <input id="mpCode" maxlength="5" placeholder="CODE" style="width:9ch;text-transform:uppercase">
+    <button id="mpGo">CONNECT →</button>
+  </div>
+  <div id="mpCodeLine" style="display:none;font-size:24px;font-weight:bold;color:var(--gold);letter-spacing:6px;margin:8px 0"></div>
+  <div id="mpNameRow" style="display:flex;gap:8px;justify-content:center;margin:8px 0">
+    <input id="mpName" maxlength="12" placeholder="YOUR NAME" style="width:14ch">
+  </div>
+  <div id="mpList"></div>
+  <div id="mpGrid"></div>
+  <div class="sub" style="max-width:640px;margin:0 auto">Four seats at the table. Each player controls their own candidate in every battle; story choices go to whoever clicks first. Everything else — shop, intel ops, bench — is run by the host, exactly like a real committee.</div>
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+    <button id="mpStart" disabled>LOCK IN THE CREW — START</button>
+    <button id="mpLeave">LEAVE</button>
+  </div>
+</div></div>
+
+<script>
+'use strict';
+/* ============================================================
+   [3] DATA
+   ============================================================ */
+const A='assets/characters/';
+const PORTRAITS={
+  aidan:A+'aidan.png', butler:A+'Butler.png', max:A+'max.png', lane:A+'lane.png',
+  simring:A+'Simring.png', swain:A+'Swain.png', kiran:A+'Kiran.png',
+  jason:A+'Jason%20(1).png', lucian:A+'Lucian.png', tan:A+'tan.png',
+  bullock:A+'bullock.png',   /* FINAL BOSS; dialogue lands in P5 */
+  chalmers:A+'chalmers.png', /* THE SHADOW SPOKES-TREASURER — fiscal boss, P4 */
+  bessock:A+'bessock.png',   /* P6 cameo: newsroom water-cooler pundit */
+};
+const ROSTER=['butler','max','aidan','lane','simring','swain','kiran','jason','lucian','tan'];
+const CANDIDATES=['butler','max','aidan','lane','simring','swain','kiran','jason','lucian','tan']; // PC-select pool (Bessock cut)
+
+/* ---- CHARS (P0: flavour only; base stats land with P2) ---- */
+const CHARS={
+  butler:{name:'Butler',cls:'THE BUTLER',style:'Healer / Support',color:'#d4b483',
+    sig:['Tea & Bickies','Silver Service'],
+    blurb:'Served seven Treasurers. Regrets nine, warmly.'},
+  max:{name:'Max',cls:'THE BANKER',style:'Cash-Tank',color:'#2ec4b6',
+    sig:['Wallet Wall','Term Deposit'],rivalDefault:true,
+    blurb:'Compounding interest and grudges. Mostly grudges.'},
+  aidan:{name:'Aidan',cls:'THE ECONOMIST',style:'Policy Nuker',color:'#4ea8de',
+    sig:['Rate Hike','Quantitative Easing'],
+    blurb:'Has filled three whiteboards. None with a number.'},
+  lane:{name:'Lane',cls:'THE QUANT',style:'Debuffer / Tech',color:'#9d4edd',
+    sig:['Toktimer','Plant Bug','The Dossier'],
+    blurb:'The Toktimer guy. That is all you get; that is all he is.'},
+  simring:{name:'Simring',cls:'THE KINGMAKER',style:'Buffer / Politics',color:'#f72585',
+    sig:['Media Spin','Question Time'],rivalDefault:true,
+    blurb:'One phone call and question time is about you.'},
+  swain:{name:'Swain',cls:'THE BUREAUCRAT',style:'Tank',color:'#778da9',
+    sig:['Red Tape','Form 47BP'],
+    blurb:'A filing cabinet that achieved sentience and will not apologise.'},
+  kiran:{name:'Kiran',cls:'THE UNDERGRAD',style:'Wildcard RNG',color:'#80ed99',
+    sig:['Loaded Dice','All-Nighter'],
+    blurb:'HD is HD. The curve is flat. Roti is a pyramid scheme.'},
+  jason:{name:'Jason',cls:'THE COAL BARON',style:'Heavy Hitter',color:'#f77f00',
+    sig:['Cook the Books','Cash Backer'],
+    blurb:'Thermal coal: “up the gills, boys”. The ACCC knows.'},
+  lucian:{name:'Lucian',cls:'THE LOBBYIST',style:'Charm / Debuffer',color:'#e5989b',
+    sig:['Power Lunch','The Long Lunch'],
+    blurb:'Knows your secretary, and your secretary’s secretary.'},
+  tan:{name:'Tan',cls:'THE TRADER',style:'Burst / High AGI',color:'#ffd166',
+    sig:['Short Squeeze','Insider Sprint'],
+    blurb:'Shorted his own grandmother. It bounced. He held her.'},
+  bullock:{name:'Michele Bullock',cls:'RBA GOVERNOR',style:'FINAL BOSS — not playable',boss:true,
+    sig:['Cash Rate Hike','Yield Curve Control','Forward Guidance'],
+    blurb:'The one person in the building who understands the numbers.'}
+};
+
+/* ---- SKILLS (~45): names + kit lines now; effects wired in P2 ---- */
+const SKILLS={
+  tea_bickies:{n:'Tea & Bickies',w:'butler',mp:3,kind:'party heal',
+    d:'Heals the party. The biscuit is three coats of puff pastry. It works, somehow.'},
+  silver_service:{n:'Silver Service',w:'butler',mp:2,kind:'cleanse',
+    d:'Clears the worst status. With tongs. Waistcoat discipline is a stat.'},
+  doilies:{n:'Doilies',w:'butler',mp:2,kind:'party DEF',
+    d:'Places defensive doilies. They take damage like small noble pads.'},
+  high_tea:{n:'High Tea',w:'butler',mp:5,kind:'revive-lite',
+    d:'Sit a downed ally back up. The cost is bone china and secrecy.'},
+  final_polish:{n:'Final Polish',w:'butler',mp:6,kind:'big heal',
+    d:'Presents an ally so immaculate that reality reclassifies them as un-hit.'},
+  wallet_wall:{n:'Wallet Wall',w:'max',mp:3,kind:'taunt-shield',
+    d:'Holds up the wallet. Bullets bounce off creditor logic.'},
+  term_deposit:{n:'Term Deposit',w:'max',mp:4,kind:'delayed nuke',
+    d:'Deposits damage now. Maturation date: during the enemy’s next boss turn.'},
+  cds_casino:{n:'CDS Casino',w:'max',mp:4,kind:'gamble',
+    d:'Pays out exactly when you least think to check the coupon.'},
+  leveraged_banter:{n:'Leveraged Banter',w:'max',mp:2,kind:'ATK buff',
+    d:'At 10× volume. Regulatory review pending, energy unmatched.'},
+  margin_absolve:{n:'Margin Absolution',w:'max',mp:5,kind:'revive',
+    d:'“The bank forgives.” Costs a favour. Banks do not do free.'},
+  rate_hike:{n:'Rate Hike',w:'aidan',mp:4,kind:'ATK down',
+    d:'Enemy ATK down. Households already fell; this is for the record.'},
+  qe:{n:'Quantitative Easing',w:'aidan',mp:5,kind:'party regen',
+    d:'Prints morale. Legality: pending. Efficacy: historically obvious.'},
+  somp:{n:'Statement of Monetary Policy',w:'aidan',mp:3,kind:'party ATK buff',
+    d:'90 pages and three footnotes that rename Tuesday. Enemies are dazed; allies are inspired.'},
+  sticky_infl:{n:'Sticky Inflation',w:'aidan',mp:4,kind:'DOT',
+    d:'It lingers. It lingers on the invoice, on the crate, on the army.'},
+  toktimer:{n:'Toktimer',w:'lane',mp:2,kind:'perfect-timing crit',
+    d:'Crit if timed perfectly. Otherwise it timestamps your ordeal. Legal, dated, useless tonight.'},
+  plant_bug:{n:'Plant Bug',w:'lane',mp:2,kind:'debuff-tech',
+    d:'Bugs an enemy. Yields per bug: negotiable, later, in a stairwell.'},
+  dossier:{n:'The Dossier',w:'lane',mp:3,kind:'reveal',
+    d:'Reveal enemy statlines. Some enemies reveal something back. Professional outings sometimes.'},
+  backtest:{n:'Backtest',w:'lane',mp:3,kind:'debuff',
+    d:'Fits a model to enemy behaviour. Horrifically overfitted. Works beautifully tonight.'},
+  edge_case:{n:'Edge Case',w:'lane',mp:5,kind:'nuke',
+    d:'Runs until it hits an edge case. It finds one. The edge case is you briefly, then is resolved.'},
+  media_spin:{n:'Media Spin',w:'simring',mp:3,kind:'buff-debuff',
+    d:'Rewrites the battle as a “tense stand-off” from a story that never happened.'},
+  quest_time:{n:'Question Time',w:'simring',mp:5,kind:'shutdown',
+    d:'Someone must answer. It will not be him. Watch the speaker’s list closely.'},
+  front_page:{n:'Front Page',w:'simring',mp:4,kind:'charm',
+    d:'Enemy spends the turn rewording its bio.'},
+  leak:{n:'Strategic Leak',w:'simring',mp:3,kind:'DOT',
+    d:'Damage scheduled for Tuesday’s edition. Editing is a form of violence.'},
+  shockjock:{n:'Shock Jock Cameo',w:'simring',mp:6,kind:'mass debuff',
+    d:'Calls the battlefield live for four hours. Calls the backbench too.'},
+  red_tape:{n:'Red Tape',w:'swain',mp:3,kind:'enemy skip',
+    d:'The enemy files Form Nothing (Optional). They skip the turn entirely — freedom costs paperwork.'},
+  form47:{n:'Form 47BP Shield',w:'swain',mp:4,kind:'shield',
+    d:'The party is protected by a form nobody can locate, including Swain. It still holds.'},
+  proc_motion:{n:'Procedural Motion',w:'swain',mp:3,kind:'order lock',
+    d:'Freezes debate. Initiative order dares not move without a second.'},
+  circular:{n:'Circular Delegation',w:'swain',mp:5,kind:'self-heal',
+    d:'Approved three governments ago. Needs only a stamp. The stamp is emotional.'},
+  long_stare:{n:'The Long Stare',w:'swain',mp:2,kind:'taunt',
+    d:'Works on invoices. Works on intruders. Works on the cat.'},
+  loaded_dice:{n:'Loaded Dice',w:'kiran',mp:3,kind:'wildcard',
+    d:'Random effect from a curated chaos table. The curation is the crime.'},
+  allnighter:{n:'All-Nighter',w:'kiran',mp:5,kind:'revive',
+    d:'Revives anyone with a transit-grade espresso. Applied to wrong war twice; still counts.'},
+  caffeine_sprint:{n:'Caffeine Sprint',w:'kiran',mp:2,kind:'AGI buff',
+    d:'Forty minutes left to submit. Anything can be outsprinted at that point.'},
+  stat_noise:{n:'Statistical Noise',w:'kiran',mp:3,kind:'evasion',
+    d:'Unprovable. Unfalsifiable. Somehow on the whiteboard every time.'},
+  curve_flat:{n:'The Curve Is Flat',w:'kiran',mp:4,kind:'confuse',
+    d:'Enemies disagree violently about what comes next. Nobody checks the graph.'},
+  cook_books:{n:'Cook the Books',w:'jason',mp:4,kind:'nuke',
+    d:'Recipe includes one ingredient called “previous results”. It scales.'},
+  cash_backer:{n:'Cash Backer',w:'jason',mp:3,kind:'party ATK',
+    d:'Everyone hits harder if some cash washed on the way here. Legality is a vibe.'},
+  coal_buffet:{n:'Coal Train Buffet',w:'jason',mp:5,kind:'morale',
+    d:'Serves “up the gills, boys” with two coleslaw options. Morale spikes immodestly.'},
+  seam41:{n:'Seam 41 Incident',w:'jason',mp:6,kind:'big nuke',
+    d:'Nobody tells new hires. Now they will.'},
+  accc_ping:{n:'Legitimate Business Question',w:'jason',mp:1,kind:'draw aggro',
+    d:'The paperwork hums. Somewhere, the ACCC hears it and becomes efficiency itself.'},
+  power_lunch:{n:'Power Lunch',w:'lucian',mp:3,kind:'charm',
+    d:'Charms an enemy mid-sentence. Expensed as “consulting regarding protagonist alignment”.'},
+  long_lunch:{n:'The Long Lunch',w:'lucian',mp:5,kind:'stun',
+    d:'Stuns all. Wine cellar consulted. Staffing consulted. Time now irrelevant.'},
+  golf_invite:{n:'Golf Club Invite',w:'lucian',mp:4,kind:'cooldown clear',
+    d:'Rivals discuss war while putting, like reasonable people. Cooldowns dissolve.'},
+  quiet_word:{n:'A Quiet Word',w:'lucian',mp:2,kind:'debuff',
+    d:'Cuts enemy morale mid-sentence with one syllable of consideration.'},
+  donors_round:{n:'Donors’ Roundtable',w:'lucian',mp:6,kind:'party buff',
+    d:'Allies gain Lasting Impression (buff). Objections were waived at the door.'},
+  short_squeeze:{n:'Short Squeeze',w:'tan',mp:4,kind:'burst',
+    d:'Large damage. Regularly audited. Usually okay on it.'},
+  insider_sprint:{n:'Insider Sprint',w:'tan',mp:2,kind:'initiative buff',
+    d:'Information advantage. Litigation risk. Extreme heart rate. Worth it (num: 3).'},
+  pivot_ai:{n:'Pivot to AI',w:'tan',mp:3,kind:'confuse',
+    d:'Rewrites the enemy’s job description into a slide. The slide has transitions.'},
+  scalp:{n:'Scalp',w:'tan',mp:2,kind:'chip',
+    d:'Small damage, instant, no context, no flag, no regrets reported yet.'},
+  reversal:{n:'Mean-Reversion Breakout',w:'tan',mp:6,kind:'big hit',
+    d:'Hits hard roughly once every seven battles, always exactly the one you needed it in.'},
+  /* shared policy spells (learned from missions, P4+) */
+  budget_leak:{n:'Budget Leak',w:'shared',mp:4,kind:'intel strike',
+    d:'Strike using a leaked number. Nobody can locate the leak. That is the doctrine.'},
+  fiscal_mult:{n:'Fiscal Multiplier',w:'shared',mp:5,kind:'party heal+buff',
+    d:'$1 becomes $1.30 in confidence terms. Multiplier disputes are separate content.'},
+  hedge_all:{n:'Hedged To The Eyeballs',w:'shared',mp:3,kind:'party shield',
+    d:'Not risk-free. Legally, yes. Emotionally, no.'},
+  accord:{n:'THE ACCORD',w:'shared',mp:0,kind:'ULTIMATE (locked until Fiscal Mandate)',
+    d:'Full-party heal + “Aligned”. Unlocks after the Fiscal Mandate (P4). The whole plot, structurally.'}
+};
+
+/* ================= COMBAT DATA (P2) =================
+   ===TWEAK: all numbers live here or in TUNING. The battle engine reads
+   only these tables — rebalancing never touches engine code. === */
+
+/* PARTY base stats at level 1. Level = 1 + milestones stamped. */
+const STATBASE={
+  butler:  {hp:70, mp:26, atk:12, def:14, agi:9},
+  max:     {hp:80, mp:22, atk:14, def:13, agi:8},
+  aidan:   {hp:62, mp:30, atk:16, def:9,  agi:10},
+  lane:    {hp:58, mp:32, atk:15, def:8,  agi:13},
+  simring: {hp:60, mp:30, atk:15, def:8,  agi:11},
+  swain:   {hp:92, mp:22, atk:10, def:18, agi:5},
+  kiran:   {hp:55, mp:26, atk:13, def:8,  agi:14},
+  jason:   {hp:85, mp:16, atk:20, def:10, agi:7},
+  lucian:  {hp:64, mp:28, atk:13, def:9,  agi:12},
+  tan:     {hp:60, mp:22, atk:17, def:8,  agi:16}
+};
+/* per-char kits (unlock per level: level n unlocks kit[n-1] once available) */
+const KITS={
+  butler:['tea_bickies','silver_service','doilies','high_tea','final_polish'],
+  max:['wallet_wall','term_deposit','leveraged_banter','cds_casino','margin_absolve'],
+  aidan:['rate_hike','somp','qe','sticky_infl'],
+  lane:['toktimer','plant_bug','dossier','backtest','edge_case'],
+  simring:['media_spin','front_page','quest_time','leak','shockjock'],
+  swain:['red_tape','long_stare','form47','circular','proc_motion'],
+  kiran:['loaded_dice','caffeine_sprint','allnighter','stat_noise','curve_flat'],
+  jason:['cash_backer','cook_books','accc_ping','coal_buffet','seam41'],
+  lucian:['power_lunch','quiet_word','golf_invite','long_lunch','donors_round'],
+  tan:['scalp','insider_sprint','short_squeeze','pivot_ai','reversal']
+};
+
+/* ENEMY statlines; scale = phase ratchet”(see TUNING.ratchet) */
+const ENEMY_STATS={
+  b4_guard:   {hp:32, mp:0,  atk:9,  def:6,  agi:8},
+  b4_chief:   {hp:80, mp:14, atk:12, def:9,  agi:9},
+  hedge_algo: {hp:40, mp:8,  atk:11, def:6,  agi:14},
+  spin_unit:  {hp:36, mp:10, atk:10, def:7,  agi:11},
+  asic_drone: {hp:38, mp:8,  atk:10, def:9,  agi:10},
+  asic_raid:  {hp:40, mp:10, atk:10, def:10, agi:10},  asic_chief: {hp:110,mp:20, atk:14, def:14, agi:10},
+  quant_wombat:{hp:44,mp:12, atk:11, def:10, agi:9},
+  income_pol: {hp:42, mp:6,  atk:12, def:9,  agi:9},
+  ibis:       {hp:33, mp:0,  atk:11, def:5,  agi:15},
+  ibis_king:  {hp:120,mp:16, atk:15, def:11, agi:14},
+  kangaroo:   {hp:70, mp:0,  atk:16, def:8,  agi:16},
+  shadow_ops: {hp:46, mp:10, atk:12, def:9,  agi:12},
+  scaffold:   {hp:60, mp:0,  atk:0,  def:16, agi:4},
+  spokes_tr:  {hp:190,mp:30, atk:17, def:14, agi:11},
+  coal_ceo:   {hp:150,mp:18, atk:16, def:12, agi:10},
+  kraken:     {hp:230,mp:24, atk:19, def:12, agi:9},
+  rival_sim:  {hp:150,mp:26, atk:14, def:10, agi:12},
+  rival_max:  {hp:170,mp:22, atk:15, def:13, agi:9},
+  rival_tan:  {hp:140,mp:24, atk:16, def:9,  agi:17},
+  rival_lucian:{hp:150,mp:26,atk:13, def:10, agi:13},
+  bullock_p1: {hp:260,mp:40, atk:18, def:15, agi:12},
+  bullock_p2: {hp:310,mp:46, atk:21, def:16, agi:13}
+};
+
+/* scripted enemy AI: moves rotate on turn count; 'heal' allies, 'summon' adds
+   minionId when hp < frac, |TWEAK freely === */
+const ENEMY_AI={
+  b4_chief:  {moves:[{skill:'heavy'}, {skill:'bellow', every:2}], summon:{id:'b4_guard', frac:0.45}},
+  hedge_algo:{moves:[{skill:'heavy'}]},
+  spin_unit: {moves:[{skill:'spin', every:2},{skill:'heavy'}]},
+  asic_drone:{moves:[{skill:'audit', every:2},{skill:'heavy'}]},
+  asic_raid: {moves:[{skill:'audit'},{skill:'heavy', every:2},{skill:'bellow', every:3}]},
+  asic_chief:{moves:[{skill:'audit'}, {skill:'heavy', every:2}], summon:{id:'asic_drone', frac:0.5}},
+  ibis_king: {moves:[{skill:'heavy'},{skill:'bellow', every:2}]},
+  spokes_tr: {moves:[{skill:'heavy'},{skill:'audit', every:2},{skill:'bellow', every:3}],
+    summon:{id:'scaffold', frac:0.5}},
+  coal_ceo: {moves:[{skill:'lug'},{skill:'heavy', every:2},{skill:'bellow', every:4}]},
+  kraken:    {moves:[{skill:'lug'},{skill:'heavy', every:2}]},
+  rival_sim: {moves:[{skill:'heavy'},{skill:'spin', every:2}], summon:{id:'spin_unit', frac:0.4}},
+  rival_max: {moves:[{skill:'heavy'},{skill:'lug', every:2}], summon:{id:'hedge_algo', frac:0.4}},
+  rival_tan: {moves:[{skill:'lug'},{skill:'heavy', every:2}]},
+  rival_lucian:{moves:[{skill:'spin'},{skill:'lug', every:2}]},
+  bullock_p1:{moves:[{skill:'cashrate'},{skill:'lug', every:2},{skill:'bellow', every:3}],
+    summon:{id:'scaffold', frac:0.55}},
+  bullock_p2:{moves:[{skill:'cashrate'},{skill:'lug', every:2},{skill:'audit', every:3}],
+    summon:{id:'scaffold', frac:0.5}}
+};
+
+/* ===TWEAK: TUNING — the balance knobs. Values are phase-1 baseline. === */
+const TUNING={
+  dmgVar:0.15,          /* damage randomness ±15% */
+  defCoef:0.55,         /* how much DEF softens damage */
+  critChance:0.08, critMult:1.6,
+  buffTurns:3,
+  postBattleHeal:0.5,   /* fraction of maxHP recovered after a won fight */
+  postBattleMP:0.6,     /* fraction of maxMP recovered after a won fight */
+  koAfterBattle:1,      /* downed allies revive here (HP floor) */
+  shakenAtk:0.85,       /* atk multiplier when party starts battles Shaken */
+  lossCashPenalty:0.2,  /* retreat loses this fraction of cash — never fatal */
+  fatigue:{atk:0.08, max:3}, /* P6: foe ATK −8% per prior retreat from the same site, capped at −24% */
+  ratchet:{hp:0.12, atk:0.10, reward:0.15},
+  /* per-stage scaling: level per milestone stamped */
+  charLvlHP:0.10, charLvlMP:0.06, charLvlATK:0.12, charLvlDEF:0.06,
+  raid:{triggerCort:9, cash:0.3, nerf:0.25},
+  allyUpKeepMaxMP:false
+};
+/* scripted foe "moves" — the six shapes all AI pulls from (TWEAK) */
+const FOE_MOVES={
+  heavy:{d:'standard press', pw:1.0},
+  lug:  {d:'big single swing', pw:1.45, name:'DUMP-TRUCK SWING'},
+  spin: {d:'party nudge + focus', pw:0.75, aoe:true, name:'FLOOR SPIN'},
+  audit:{d:'locks the least-useful ally', pw:0.5, status:'audited', name:'AUDITED'},
+  bellow:{d:'shakes the room; party atk down', pw:0.35, status:'shaken', name:'SINISTER BELLOW'},
+  cashrate:{d:'Bullock only: hits and lifts party cash to power herself', pw:0.85, name:'CASH RATE HIKE'}
+};
+/* party Shaken threshold hook (cortisol) */
+const CORT={shaken:7, raid:9};
+
+/* ===TWEAK: SKILL_FX — what every skill does in battle. pw multiplies the
+   actor's ATK for offense, or is flat HP/MP for heals and buffs. Adding a
+   new fx shape requires engine support; re-tuning pw never does. === */
+const SKILL_FX={
+  /* butler */
+  tea_bickies:{fx:'partyheal', pw:16},
+  silver_service:{fx:'cleanse', pw:2},
+  doilies:{fx:'defbuff', pw:5},
+  high_tea:{fx:'revive', pw:0.5},
+  final_polish:{fx:'bigheal', pw:38},
+  /* max */
+  wallet_wall:{fx:'taunt', pw:3},
+  term_deposit:{fx:'dmg', pw:1.5},
+  cds_casino:{fx:'wildcard', pw:1.0},
+  leveraged_banter:{fx:'atkbuff', pw:6},
+  margin_absolve:{fx:'revive', pw:1.0},
+  /* aidan */
+  rate_hike:{fx:'atkdown', pw:5},
+  qe:{fx:'regen', pw:5},
+  somp:{fx:'atkbuffAll', pw:4},
+  sticky_infl:{fx:'dot', pw:7},
+  /* lane */
+  toktimer:{fx:'dmg', pw:1.3, crit:0.45},
+  plant_bug:{fx:'atkdown', pw:4},
+  dossier:{fx:'reveal', pw:0},
+  backtest:{fx:'atkdown', pw:3},
+  edge_case:{fx:'dmg', pw:2.1},
+  /* simring */
+  media_spin:{fx:'defbuff', pw:6},
+  quest_time:{fx:'skipfoe', pw:999},
+  front_page:{fx:'charm', pw:999},
+  leak:{fx:'dot', pw:6},
+  shockjock:{fx:'massdown', pw:5},
+  /* swain */
+  red_tape:{fx:'skipfoe', pw:999},
+  form47:{fx:'defbuff', pw:10},
+  proc_motion:{fx:'skipfoeAll', pw:999},
+  circular:{fx:'heal', pw:30},
+  long_stare:{fx:'taunt', pw:2},
+  /* kiran */
+  loaded_dice:{fx:'wildcard', pw:1.1},
+  allnighter:{fx:'revive', pw:1.0},
+  caffeine_sprint:{fx:'agibuff', pw:9},
+  stat_noise:{fx:'evasion', pw:12},
+  curve_flat:{fx:'confuse', pw:999},
+  /* jason */
+  cook_books:{fx:'dmg', pw:1.8},
+  cash_backer:{fx:'atkbuffAll', pw:5},
+  coal_buffet:{fx:'partyheal', pw:12},
+  seam41:{fx:'dmgAll', pw:1.1},
+  accc_ping:{fx:'taunt', pw:1},
+  /* lucian */
+  power_lunch:{fx:'charm', pw:999},
+  long_lunch:{fx:'skipfoeAll', pw:999},
+  golf_invite:{fx:'partyclean', pw:2},
+  quiet_word:{fx:'atkdown', pw:4},
+  donors_round:{fx:'atkbuffAll', pw:7},
+  /* tan */
+  short_squeeze:{fx:'dmg', pw:1.9},
+  insider_sprint:{fx:'agibuff', pw:7},
+  pivot_ai:{fx:'confuse', pw:999},
+  scalp:{fx:'dmg', pw:0.9},
+  reversal:{fx:'dmg', pw:2.6, cooldown:3},
+  /* shared / story */
+  budget_leak:{fx:'dmg', pw:1.4},
+  fiscal_mult:{fx:'partyheal', pw:18},
+  hedge_all:{fx:'defbuff', pw:8},
+  accord:{fx:'accord', pw:0}
+};
+/* ===TWEAK: wild dice table for loaded_dice / cds_casino === */
+const DICE_TABLE=[
+  {fx:'dmg', pw:1.4, label:'LUCKY STRIKE'},
+  {fx:'partyheal', pw:14, label:'GROUP REIMBURSEMENT'},
+  {fx:'atkbuffAll', pw:4, label:'VIRAL MOMENT'},
+  {fx:'evasion', pw:10, label:'BENEFICIAL AUDIT DELAY'},
+  {fx:'cort', pw:1, label:'STRESS BALL INCIDENT'},
+  {fx:'dmg', pw:0.4, label:'ROLL OF 1 (MISCELLANEOUS FILING FEE)'}
+];
+
+/* ---- ENEMIES (visuals + loot; statlines in ENEMY_STATS above) ---- */
+const ENEMIES={
+  b4_guard:{name:'Big Four Suit Security',emoji:'🕴',count:3,
+    line:'“Do you have an appointment, or an umbrella? Either counts. Only one protects.”'},
+  b4_chief:{name:'BIG FOUR SECURITY CHIEF',emoji:'🕴',boss:true,count:1,
+    line:'“Nineteen years in lifts. Nobody out-negotiates the parking policy.”'},
+  rival_sim:{name:'THE FIRST RIVAL — SIMRING',emoji:'📺',boss:true,count:1,
+    line:'“Take notes. This is the part you’ll be asked about.”'},
+  rival_max:{name:'THE FIRST RIVAL — MAX',emoji:'💰',boss:true,count:1,
+    line:'“I brought leverage and a hoodie. Guess which one is the weapon.”'},
+  rival_tan:{name:'THE FIRST RIVAL — TAN',emoji:'⚡',boss:true,count:1,
+    line:'“Position’s open. So is the exit. Timing is everything.”'},
+  rival_lucian:{name:'THE FIRST RIVAL — LUCIAN',emoji:'🍽',boss:true,count:1,
+    line:'“Lunch is enemies, or so I’ve financed.”'},
+  asic_raid:{name:'ASIC EMERGENCY RESPONSE TEAM',emoji:'🧾',count:3,
+    line:'“Routine check. Please do not organise your paperwork with bricks.”'},
+  asic_drone:{name:'ASIC Audit Drone',emoji:'🛩',count:2,
+    line:'Bureaucratic aerobics. Literal. Ally-shaped but suspicious.'},
+  asic_chief:{name:'ASIC Chief Auditor',emoji:'🧾',boss:true,count:1,
+    line:'Binds your receipts into a book and prints it.'},
+  quant_wombat:{name:'Quant Wombat',emoji:'🦡',count:3,
+    line:'Runs flat and optimistic. Does modelling on panel 4.'},
+  income_pol:{name:'Income Police',emoji:'🚔',count:2,
+    line:'They can smell unpaid PAYG through a wall.'},
+  ibis:{name:'Inflation Ibis',emoji:'🐦‍⬛',count:3,
+    line:'Eats from bins and your P&L. The margin call has faces.'},
+  ibis_king:{name:'Bin Chicken Sovereign',emoji:'👑',boss:true,count:1,
+    line:'The margin call has a face. The face has a beak.'},
+  kangaroo:{name:'Margin Call Kangaroo',emoji:'🦘',count:1,
+    line:'Bounding debt. Red ink across the park at speed.'},
+  spin_unit:{name:'Spin Unit',emoji:'📺',count:2,
+    line:'Broadcasting live from your weakest argument.'},
+  hedge_algo:{name:'Hedge Fund Algo',emoji:'🤖',count:2,
+    line:'Screens from the education of your lunch order.'},
+  shadow_ops:{name:'Shadow Board Operative',emoji:'🎭',count:4,
+    line:'Unaudited. Unlisted. Unwelcomed.'},
+  scaffold:{name:'Shadow Board Scaffold',emoji:'🏗',summon:true,count:1,
+    line:'Summoned mid-argument. Load-bearing grudges.'},
+  spokes_tr:{name:'THE SHADOW SPOKES-TREASURER',emoji:'💼',boss:true,count:1,
+    line:'Shadow policies must first be legislated in the shadows.'},
+  coal_ceo:{name:'COAL CORP — ACTING CEO',emoji:'🪨',boss:true,count:1,
+    line:'“Thermal coal is a currency too. It just happens to burn.”'},
+  kraken:{name:'Dark Pool Kraken',emoji:'🐙',boss:true,count:1,
+    line:'You cannot see it. It can see your portfolio.'},
+  bullock_p1:{name:'GOVERNOR BULLOCK',emoji:'🏛',boss:true,count:1,final:true,
+    line:'She has the cash rate. She has the room.'},
+  bullock_p2:{name:'BULLOCK — THE MANDATE',emoji:'🔥',boss:true,count:1,final:true,
+    line:'Two mandates enter. One leaves upright.'}
+};
+
+/* ---- ITEMS (P1 shop stock reads from this) ----
+   consumables carry effect fields: thp (heal), tmp (MP), cort (±), tintel (+intel). */
+const ITEMS={
+  gold_coins:{name:'Gold Coins',emoji:'🪙',cost:14,cort:-1,d:'−1 🔥. Heavy pocket, lighter head.'},
+  servo_meal:{name:'Servo Meal Deal',emoji:'🌭',cost:6,thp:18,d:'+18 HP, +1 🔥 then −1 🔥 (net zero, insight).'},
+  butler_tea:{name:'Pot of Butler Tea',emoji:'🫖',cost:9,cort:-2,d:'−2 🔥, and someone says “sugar?” affecting your vote.'},
+  energy_gel:{name:'Trainee Energy Gel',emoji:'⚡',cost:4,tmp:3,d:'+3 MP. Tastes like a small subsidy.'},
+  binoculars:{name:'Field Binoculars',emoji:'🔭',cost:12,d:'Spy jobs cheaper: peek next market event for 1🛈 (P3).'},
+  bug_kit:{name:'Bug Kit',emoji:'🐞',cost:10,d:'Pre-battle bug debuffs. Modest, but snaps shut. (P2)'},
+  dossier_b:{name:'The Dossier (Burner Copy)',emoji:'🗂',cost:16,d:'Pre-battle stat reveal. Heavier than it reads. (P2)'},
+  calm_tea:{name:'Calming Tea, No Questions',emoji:'🍵',cost:8,cort:-1,d:'−1 🔥, party-wide. The no-questions is priced in.'},
+  golf_pass:{name:'Golf Club Guest Pass',emoji:'⛳',cost:20,cort:-3,d:'−3 🔥. Discretion discussed openly among those who paid.'},
+  lawyer_call:{name:'Five-Minute Lawyer',emoji:'⚖️',cost:15,tintel:1,d:'+1 🛈 when at 7+ cortisol. He knows a guy.'}
+};
+
+/* ---- ZONES (13 in the plan; P0 unlocks two) ---- */
+const ZONES={
+  martin_hub:{name:'Martin Place Hub',act:1,d:'Where it all funds off.'},
+  b4_tower:{name:'Big Four Tower Lobby',act:1,d:'Four banks. One revolving door. Rotates with intent.'},
+  hedge_fund:{name:'The Hedge Fund Floor',act:1,d:'Sit still; watch your lunch get priced.'},
+  quickstop:{name:'Quikstop',act:1,d:'The servo. Here, have a fact.'},
+  backrooms:{name:'The Backrooms',act:1,d:'Monitors, brown paint, one purple door.'},
+  the_terminal:{name:'The Terminal',act:1,d:'Forecasts for cash. Weather costs extra.'},
+  newsroom:{name:'The Newsroom',act:1,d:'Reading the future after it became past.'},
+  coal_pent:{name:'Coal Corp Penthouse',act:1,optional:true,d:'Elevator cards discriminate against non-money.'},
+  qantas_lounge:{name:'Qantas Lounge',act:2,d:'Fly north. Freshly squeezed.'},
+  parliament:{name:'Parliament House',act:2,d:'Question time is a contact sport.'},
+  press_club:{name:'The Press Club',act:2,optional:true,d:'Lunches with flak jackets.'},
+  treasury:{name:'Treasury — Basement Level',act:2,d:'Fiscal boss dungeon. The Shadow Spokes-Treasurer unions.'},
+  rba_vault:{name:'RBA Boardroom Vault',act:3,d:'The Martin Place building had a basement all along.'}
+};
+
+/* ---- EVENT DECK (12; fires in P3 between milestones) ---- */
+const EVENTS=[
+  {id:'bondmageddon',name:'BONDMAGEDDON Warning',mood:'PANIC',
+    d:'The 10-year feels warm to the touch. Nobody jokes: everybody does.'},
+  {id:'oil',name:'Oil Spikes',mood:'BOOM',
+    d:'Commodities unaccountably positive about smoke.'},
+  {id:'trump_tariffs',name:'Trump Tweets Tariffs',mood:'FRENZY',
+    d:'“AUSTRALIA OWES THE PONDS.” THE PONDS ARE UNDEFINED.'},
+  {id:'ceo_photo',name:'CEO Photo Leak',mood:'FRENZY',
+    d:'A yacht. Some shirts. One chart. Flags are flying.'},
+  {id:'rba_decision',name:'RBA Rate Decision',mood:'CALM',
+    d:'Bullock speaks slowly. Each sentence is a policy and a mercy.'},
+  {id:'quikstop_robbery',name:'Quikstop Robbery',mood:'PANIC',
+    d:'The servo: only holding 12% loose change and contingency.'},
+  {id:'davos',name:'Davos Panel',mood:'BOOM',
+    d:'Snowache. Optimism. Table of five. Fondue pending.'},
+  {id:'tapes_missing',name:'The Tapes Go Missing',mood:'CALM',
+    d:'“Could you re-elect that?”'},
+  {id:'auction_flop',name:'Yield Auction Flops',mood:'PANIC',
+    d:'Nobody bids. The bid form wins consolidating.'},
+  {id:'imf_letter',name:'A Letter from the IMF',mood:'CALM',
+    d:'“Regard this communication as informal but formatted.”'},
+  {id:'ibis_migration',name:'Ibis Migration Wave',mood:'FRENZY',
+    d:'The bins of Martin Place have been rated by experts.'},
+  {id:'made_payout',name:'MADE Payout (???)',mood:'CALM',
+    d:'A purple envelope. Contents are unexplained. Counts for nothing; counts for everything.'}
+];
+
+/* ===TWEAK TABLE: event synergy payouts — per event id (the deck above),
+   paid on draw to whichever of these members are actually on the roster.
+   Design note: synergy pins from the board game; keep tiny. === */
+const EVENT_SYN={
+  bondmageddon:  {tan:{intel:2},    lane:{intel:1}},
+  oil:           {jason:{cash:20},  max:{cash:15}},
+  trump_tariffs: {kiran:{intel:1},  simring:{intel:2}},
+  ceo_photo:     {simring:{intel:2},max:{cash:10}},
+  rba_decision:  {butler:{cash:10}, swain:{intel:1}},
+  quikstop_robbery:{jason:{cort:1}, tan:{intel:1}},
+  davos:         {lucian:{cash:10}, max:{intel:1}},
+  tapes_missing: {swain:{intel:1},  lane:{intel:1}},
+  auction_flop:  {aidan:{cash:10},  lane:{intel:2}},
+  imf_letter:    {lucian:{cash:10}, butler:{intel:1}},
+  ibis_migration:{kiran:{cash:10},  jason:{intel:1}},
+  made_payout:   {butler:{intel:1}}
+};
+
+/* ---- ENDINGS (P5) ---- */const ENDINGS={
+  second:{name:'The Second Accord',d:'Both mandates. Bullock nods. Yields exhale.'},
+  truce:{name:'The Uneasy Truce',d:'One mandate, a joint press release shaped like a silent stalemate.'},
+  iron:{name:'The Iron Ledger',d:'The spreadsheet balances. Doubters became headcounts.'},
+  heli:{name:'Helicopter Money',d:'Chaos achieved. Every helicopter is a wish with rotors.'}
+};
+
+/* ---- SCENES ----
+   block types:
+     {t:'k', x}                          kicker header
+     {t:'say', who, pid, text}           dialogue click-beat
+     {t:'get', cash, intel, cort, note}  resource toast beat
+     {t:'flag', set, val}                set flag
+     {t:'join', id, say}                 recruit a face
+     {t:'choice', prompt, options:[{x, set, goto, panel, note}]}
+     {t:'battle', id, reward, note}      P0 stub battle (P2 resolves fully)
+     {t:'panel', panel:'shop'|'swap'|'ops'|'backrooms'}
+     {t:'mile', id:'M0', phase, phaseName, sub}   milestone clock advance
+     {t:'loop'}                          hub options again
+   scene meta: {zone, next: sceneId | fn(G)}
+   ============================================================ */
+const SCENES={};
+
+/* — PROLOGUE · Phase 1: Grumbling Yields — */
+SCENES['m0_tv']={zone:'— SYDNEY · STUDIO B · 5:47PM — LIVE —',blocks:[
+  {t:'k', x:'PROLOGUE · M0 · GRUMBLING YIELDS'},
+  {t:'say', who:'AUTO-CAPTIONS', text:'…AND THE WINNER OF THIS YEAR’S MONETARY POLICY COMPETITION, FROM A FIELD OF TEN HOPEFULS WHO ALL PREDICTED THE SAME THING…', silh:true},
+  {t:'say', who:'PRODUCER (IN EAR)', text:'Awkward moment live: the 10-year yield just detonated. Can we get a cardiac advisor to the booth? And to the bond desk, ideally.'},
+  {t:'say', who:'AUTO-CAPTIONS', text:'“BONDS: HISTORIC SPIKE. ECONOMISTS: HISTORICALLY LIGHT AGAIN.”', silh:true},
+  {t:'get', cash:15, intel:1, note:'You won the competition. You did not cause the spike. That distinction will be tested.'},
+  {t:'say', who:'NEWS CRAWL', text:'THE PM HAS ANNOUNCED AN INQUIRY. THE THIRD THIS PARLIAMENT. SOURCES BRIEF THE FIRST TWO: “ENTHUSIASTIC.”', silh:true},
+  {t:'say', who:'THE PM (CARDBOARD, LOGISTICS)', text:'“We are working to ensure the bond market is held entirely and proudly AUSTRALIANLY accountable. Hence: an inquiry.”', silh:true},
+  {t:'say', who:'PRODUCER (IN EAR)', text:'That take was horrifying, the quiet kind of horrifying. Post-match: our winner is backstage. Nobody has told them yet.'},
+  {t:'say', who:'NEWS CRAWL', text:'RBA DECLINES TO COMMENT. THE GOVERNOR BLINKED 40 TIMES. ANALYSTS: “CONFIDENT.”', silh:true}
+], next:()=> 'm0_exit'};
+
+SCENES['m0_exit']={zone:'— BACKSTAGE CORRIDOR · 5:51PM —',blocks:[
+  {t:'k', x:'A TROLLEY ARRIVES. THE TROLLEY HAS TEA.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Congratulations, younger colleague. You forecast nothing, and a crisis happened around you like a jacket.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'That is the finest professional preparation available. I served seven Treasurers. I regretted each of them warmly.'},
+  {t:'say', who:'PARLIAMENTARY BRIEF (IN-TRAY)', text:'THE INQUIRY SEEKS “A WORKABLE SOUTH-CORRIDOR STYLE KINPF FROM SOMEONE WHO UNDERSTANDS MONEY AT 6AM.” HOW EXACTLY IS THAT A CRITERION.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'You are now, officially, the Candidate. Cash, intel, a mild cortisol smell, and a war on two mandates — the fiscal one at Treasury, the monetary one at the Reserve Bank.'},
+  {t:'get', cash:5, intel:2, note:'Salary. Thirty seconds in.'},
+  {t:'choice', prompt:'“Shall we begin, or shall we discuss health coverage? Health coverage is also a war.”',
+    options:[
+      {x:'“I’ll take both mandates.”', set:'brave', note:'The clock begins.'},
+      {x:'“Is there a health coverage plan?”', set:'coward2', note:'Answered like a committed economist.'},
+      {x:'“How many Treasurers regretted YOU warmly?”', set:'snark', note:'The Butler answered with his eyes.'},
+      {x:'“No.”', set:'refused', note:'The bond market ignored you. Bonds do that.'}
+    ]},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Correct answers unneeded; the market neither asked nor cared. We begin. Rule one: cortisol rises each battle won. At 7 the party fights Shaken. At 9 the regulators RAID you — an ambush battle, and roughly thirty percent of your cash falls into the state.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Gold Coins, servo meals, or my tea keep the number down. Rule two: never rule anything out on a Friday. Rule three: in the Backrooms there is a purple door. It will not explain itself. Not once. Not ever.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'There are nine others from that competition. Six will join you by story. Two may instead become rivals — the Hedge Fund crown and the newsroom orbit make their own appointments. One keeps the last for an arrangement of purple.'},
+  {t:'joinif', who:'butler', alt:'swain',
+    say:'“I join. The rota begins. Breakfast is at six; the bond market has no manners.”',
+    altSay:'“Evidently I am the most organised thing in this corridor. Rota accepted. The tea, tragically, is on me to source.”'},
+  {t:'mile', id:'M0', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Inquiry exists. You exist. The vigilantes have been notified.'}
+], next:()=> 'hub'};
+
+/* — M1: the Big Four Tower lobby (skirmish-resolved until P2 wires the
+   real turn engine onto the same battle blocks) — */
+SCENES['m1_lobby']={zone:'— BIG FOUR TOWER LOBBY · MARBLE EVERYWHERE —',blocks:[
+  {t:'k', x:'M1 · FORM THE FACTION'},
+  {t:'say', who:'BIG FOUR SUIT SECURITY', text:'“Do you have an appointment, or an umbrella? Either counts. Only one protects.”', silh:true},
+  {t:'battle', id:'b4_guard', reward:{cash:25, intel:2, cort:1},
+    note:'Three suits. Nice ties, worse odds for them.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Note the discipline on that retreat. You have located his courage; it was in his tie.'},
+  {t:'say', who:'SECURITY CHIEF (DOWN THE STAIRS)', text:'“MRS BULLOCK FAXED THIS MORNING. WORD OF THE COMPETITION HAS SPREAD. YOU ARE NOW AN INCIDENT.”', silh:true},
+  {t:'battle', id:'b4_chief', reward:{cash:60, intel:4, cort:1},
+    note:'Incident management begins in its natural habitat.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The lobby is ours, as a legal courtesy. The tower remains aspirational. Word of your affiliation has prerequisites now, so choose your first ally while the lifts are compromised.'},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran'],
+    prompt:'The lifts chime. Four colleagues loiter with intent:',
+    say:'“So this is where the revolution keeps its stapler.”'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The faction exists. The bond market has been notified and has not yet reacted. That is never a good sign.'},
+  {t:'mile', id:'M1', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'Faction formed. Side lines are opening: a newsroom wants noise, a servo wants custom, and someone is rehearsing their rival arc in the reflection of the lift doors.'}
+], next:()=> 'hub'};
+
+/* — M2: Follow the Money — */
+SCENES['m2_infilt']={zone:'— BIG FOUR TOWER · FLOOR 31 · AFTER HOURS —',blocks:[
+  {t:'k', x:'M2 · FOLLOW THE MONEY'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The Shadow Board is a rumour with a chair. We are on its floor now. Floor 31 has no signage — the signage was fired.'},
+  {t:'choice', prompt:'How do you work the floor?',
+    options:[
+      {x:'Plant bugs on the boardroom landline.', set:'recon_bug', note:'Lane would be proud. Whoever Lane is.'},
+      {x:'Walk in the front door like you pay rates here.', set:'recon_front', note:'Suit-based infiltration. Oddly effective in this town.'}
+    ]},
+  {t:'say', who:'MEETING ROOM TV (STILL ON)', text:'A SLIDE, HALF-VISIBLE: “SHADOW BOARD — STAGE 2 — MANDATORY HUMILITY FOR OSTENSIBLE TREASURERS.” THE WIFI FORGOT TO LOG OUT.'},
+  {t:'say', who:'THE SHADOW BOARD (IN SUMMARY)', text:'They exist to keep both mandates broken so the fees keep flowing. Your existence is a spreadsheet error by their reckoning.', silh:true},
+  {t:'battle', id:'hedge_algo', reward:{cash:35, intel:3, cort:1},
+    note:'Floor-31 security are not people. Nobody says otherwise out loud.'},
+  {t:'say', who:'THE FIRST RIVAL', text:'“You found the board. Cute. I found the board MONTHS ago — I stayed, and I got a chair. You can be recruited by me, or featured on me. Choose by bedtime.”'},
+  {t:'choice', prompt:'The rival extends a chair.',
+    options:[
+      {x:'“Pull up a chair. The faction has room.”', goto:'m2_join', note:'Rival for now; roster for always.'},
+      {x:'“Feature me. Get it over with.”', goto:'m2_rivalboss', note:'Boss fight now; roster reclaimed later.'}
+    ]},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Two futures for one colleague. Whatever happened tonight, the files were copied. The Shadow Board is exposed either way.'},
+  {t:'mile', id:'M2', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Shadow Board is exposed and one rival has decided what they are to you. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
+], next:()=> 'hub'};
+
+SCENES['m2_join']={zone:'— FLOOR 31 · THE CHAIR THAT WAS OFFERED —',blocks:[
+  {t:'joinrival'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'They joined. Rivalry deferred to rota. The tea was already warm, which is how you know.'},
+  {t:'battle', id:'spin_unit', reward:{cash:30, intel:4, cort:1},
+    note:'Their old team came to collect them. Your new ally declined the away game.'},
+  {t:'say', who:'THE NEW ALLY', text:'“Fire everyone. Including me later, probably. Right now: fire them.”'},
+  {t:'mile', id:'M2', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Shadow Board is exposed and the rival of record chose sides. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
+], next:()=> 'hub'};
+
+SCENES['m2_rivalboss']={zone:'— FLOOR 31 · THE CHAIR THAT WAS TAKEN —',blocks:[
+  {t:'battle', id:'rivalFirst', reward:{cash:90, intel:8, cort:2},
+    note:'The rival brings their whole ecosystem. They also bring a merch table.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'They lost gracefully at volume, which is a tell. Expect round two with an actual mandate on the line.'},
+  {t:'mile', id:'M2', phase:2, phaseName:'VIGILANTES CIRCLE',
+    sub:'The Shadow Board is exposed and the rival of record chose ill. Side content breathes: Coal Penthouse, deep Backrooms, a newsroom with your name in it.'}
+], next:()=> 'hub'};
+
+/* — M3: FLY NORTH — Canberra, phase 3 THE SPASM — */
+SCENES['m3_flynorth']={zone:'— SYDNEY → CANBERRA · QANTAS LOUNGE, THEN WHEELS-UP —',blocks:[
+  {t:'k', x:'M3 · FLY NORTH'},
+  {t:'say', who:'QANTAS DESK', text:'“Booking confirmed. Complicated compensation pre-negotiated: you are flying on the record and paying in precedent.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Canberra. Parliament for the theatre, Treasury for the truth, and the Press Club for whichever is cheaper. At this altitude the yields can no longer pretend to be noise.'},
+  {t:'say', who:'PILOT (PA)', text:'“Heads down, we are entering a band of unexplained market weather. Seatbelt sign: discretionary. So is the economy.”', silh:true},
+  {t:'get', cash:20, intel:3, note:'Travel advance — the inquiry believes in receipts, not hospitality.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'We have room for one more on the manifest. Canberra rewards paperwork, and there is paperwork walking among us with strong opinions about forms.'},
+  {t:'allyChoice', pool:['swain','jason','kiran','lucian','tan'],
+    prompt:'One more seat on the jet. Who pre-boards?',
+    say:'“Canberra, is it? I bring either favour-trading or grabbing. Two of those are skills.”'},
+  {t:'say', who:'BOARD (ELECTRONIC, FINALLY UP TO DATE)', text:'DESTINATION: CANBERRA. STATUS: ALARMED.', silh:true},
+  {t:'mile', id:'M3', phase:3, phaseName:'THE SPASM',
+    sub:'Parliament, the Press Club and the Treasury basement are open. The fiscal boss unions below. Milestones from here hurt more: encounters ratchet again.'}
+], next:()=> 'hub'};
+
+/* — zone vignettes: travel targets (visit via the ZONES panel) — */
+SCENES['zs_quickstop']={zone:'— QUIKSTOP · THE SERVO —',blocks:[
+  {t:'k', x:'QUIKSTOP'},
+  {t:'say', who:'SERVO ATTENDANT', text:'“Rates went up so the pie went up. Chain of economic consequence. $4.20.”', silh:true},
+  {t:'panel', panel:'shop'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Fine milk display, questionable news rack. Never buy a generator from a man whose logo is a hot meal.'}
+], next:()=> 'hub'};
+
+SCENES['zs_b4']={zone:'— BIG FOUR TOWER · LOBBY REVISIT —',blocks:[
+  {t:'k', x:'BIG FOUR TOWER'},
+  {t:'say', who:'REPLACEMENT SUIT SECURITY', text:'“Standing orders: comply loudly, resist quietly. Also, welcome back!”'},
+  {t:'battle', id:'b4_guard', reward:{cash:25, intel:2, cort:1},
+    note:'Lobby skirmishes replenish; cortisol keeps score.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Word of the lobby incident has recruits queuing at the revolving door. Take one; the rota thanks you in advance.'},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
+    prompt:'A colleague saw the lobby carnage and wants in:',
+    say:'“I watched you out-appointment a Chief. I bring either policy or questionable ambition.”'}
+], next:()=> 'hub'};
+
+SCENES['zs_terminal']={zone:'— THE TERMINAL —',blocks:[
+  {t:'k', x:'THE TERMINAL'},
+  {t:'say', who:'TERMINAL GUY', text:'“Forecasts for cash. Weather extra. I sell certainty and doubt, packaged as one.”', silh:true},
+  {t:'get', intel:2, once:'terminal_used', note:'The tape was readable today.'},
+  {t:'flagOnce', set:'terminal_used', note:'THE TAPE'}
+], next:()=> 'hub'};
+
+SCENES['zs_newsroom']={zone:'— THE NEWSROOM —',blocks:[
+  {t:'k', x:'THE NEWSROOM'},
+  {t:'say', who:'SIMRING (FROM ACROSS THE ROOM)', pid:'simring',
+    text:'“Your scandal isn’t out yet. I know, because I checked. Twice. For work.”'},
+  {t:'say', who:'SIMRING', pid:'simring',
+    text:'The trick isn’t leaking — anyone can leak. The trick is deciding WHAT WAS LEAKED, then reporting on it yourself in the third person. Watch: “sources say”.'},
+  {t:'say', who:'DIARY ROOM (HALF-HEARD)', text:'“…and if the faction can hold the lobby, they can hold a headline. I want in before the headline decides its own cast.”', silh:true},
+  {t:'say', who:'BESSOCK (BY THE WATER COOLER)', pid:'bessock',
+    text:'“I once fact-checked a coup. It was cut for length. Everything is cut for length.”'},
+  {t:'say', who:'BESSOCK', pid:'bessock',
+    text:'“If your scandal needs a source, I am suspiciously free. And they let me file last-minute copy, which makes me the only journalist in history who qualifies.”'},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
+    prompt:'A face from the competition is watching from the diary-room glass:',
+    say:'“I have saved two careers by rephrasing one sentence. Imagine what I can do for a war.”'},
+  {t:'get', intel:2, once:'newsroom_used', note:'A tip that was half-you, half-the-universe.'},
+  {t:'flagOnce', set:'newsroom_used', note:'ROOM COVER'}
+], next:()=> 'hub'};
+
+SCENES['zs_hedge']={zone:'— THE HEDGE FUND FLOOR —',blocks:[
+  {t:'k', x:'THE HEDGE FUND FLOOR'},
+  {t:'say', who:'HEDGE FUNDER (WHITEBOARD AT A CERTAIN ANGLE)', text:'“We are long on you, short on everything else, and flat on ethics. It’s a market-based approach.”', silh:true},
+  {t:'say', who:'AN ALUM (ALREADY EXITING)', text:'“They are hiring, extremely loudly, at the revolving door. My résumé is pre-loaded.”', silh:true},
+  {t:'allyChoice', pool:['aidan','lane','tan','kiran','swain','jason','lucian','simring','max'],
+    prompt:'The fund’s alum follows you out of the lift:',
+    say:'“Compensation is negotiable. Loyalty is a yellow fern. Let us begin.”'},
+  {t:'get', cash:10, once:'hedge_used', note:'A “finder’s fee” for existing interestingly.'},
+  {t:'flagOnce', set:'hedge_used', note:'FINDER FEE'}
+], next:()=> 'hub'};
+
+SCENES['zs_backrooms']={zone:'— THE BACKROOMS —',blocks:[
+  {t:'k', x:'THE BACKROOMS'},
+  {t:'say', who:'MONITOR GLOW', text:'Fluorescent hum. Filing cabinets the size of dumpling steamers. A purple door with no signage and perfectly smooth hinges.', silh:true},
+  {t:'made'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Rule three still applies. I have served seven Treasurers and none of them had hinges that smooth.'}
+], next:()=> 'hub'};
+
+SCENES['zs_coalpent']={zone:'— COAL CORP PENTHOUSE · FLOOR 4B · THE AIR HAS OPINIONS —',blocks:[
+  {t:'k', x:'COAL CORP PENTHOUSE (OPTIONAL BOSS)'},
+  {t:'say', who:'LOBBY CARD-READER', text:'“FLOOR 4B: AUTHORISED ACCESS ONLY. HAVE A PROSPEROUS SHIFT.” The reader accepts your forged badge without looking up. Deadline culture.', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The optional boss of Act One lives up here: an acting CEO who was promoted sideways, then described, and then promoted again on a technicality. He generates his own weather.'},
+  {t:'say', who:'PENTHOUSE SPEAKERS (CEILING)', text:'“GOOD NEWS: THE MINES ARE NERVOUS. BAD NEWS: SO IS EVERYTHING ELSE.” PLAYING: ELEVATOR MUSIC, AGGRESSIVE.', silh:true},
+  {t:'battle', id:'coal_ceo', reward:{cash:110, intel:6, cort:2},
+    note:'OPTIONAL — the Acting CEO defends a spreadsheet he has never fully read. Big payout if you win it.'},
+  {t:'flag', set:'coal_done', note:'PENTHOUSE: ENTERED, EXITED, QUOTED'},
+  {t:'get', cash:60, note:'Settlement: the Chairman’s golf fund, seized and “re-purposed”.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Note: party members with thermal interests are being watched now. The regulator does not read nuance, only spreadsheets. That said — victory. The elevators remember you fondly.'}
+], next:()=> 'hub'};
+
+SCENES['zs_parliament']={zone:'— CANBERRA · PARLIAMENT HOUSE · CHAMBER AND CORRIDORS —',blocks:[
+  {t:'k', x:'PARLIAMENT HOUSE · QUESTION TIME'},
+  {t:'say', who:'DOOR SECURITY', text:'“Tour group? Media? Defendant? Pick one, the forms all work.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Question Time: eleven men shouting and one chamber pretending not to hear. The Shadow Board’s Treasurer-candidate works this room daily. We are here to hear him trip on a sentence.'},
+  {t:'choice', prompt:'Question Time is about to start. How do you take a seat?',
+    options:[
+      {x:'Press gallery, notebooks visible.', set:'qt_press', note:'The spin units will smell ink.'},
+      {x:'Public gallery, wincing at every fiscal claim.', set:'qt_public', note:'Clapping is technically illegal here. Wincing is not.'},
+      {x:'Borrow the Speaker’s aisle chair. No permission sought.', set:'qt_aisle', note:'You will be noticed. That was the plan.'}
+    ]},
+  {t:'say', who:'SHADOW SPOKES-TREASURER (FROM THE DESPATCH BOX)', pid:'chalmers', text:'“The member advocates a fiscal style. I advocate a fiscal exception: the exception is the style. Amendments available at the door, priced at retrieval cost.”'},
+  {t:'battle', id:'income_pol', reward:{cash:45, intel:4, cort:1},
+    note:'The Income Police found you winces at a fiscal claim. Functional compliance in their eyes.'},
+  {t:'get', intel:2, note:'Hansard, annotated by nobody. The Shadow Board pricing disappears when it is read aloud.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'One seat still empty on the manifest, and the Treasury basement does not book tours. Whoever follows us down there should be enthusiastic about filing.'},
+  {t:'allyChoice', pool:['swain','jason','kiran','lucian','tan'],
+    prompt:'Canberra recruit two. Who follows into the basement:',
+    say:'“Basements, is it? I have opinions about fluorescent lighting and even more about stamping things.”'},
+  {t:'flag', set:'parliament_done', note:'QUESTION TIME: RESOLVED'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Treasury next. Below the atrium there is a basement with one filing cabinet that breathes. Bring cash; the Photocopy Room respects nothing else.'}
+], next:()=> 'hub'};
+
+SCENES['zs_pressclub']={zone:'— THE PRESS CLUB · LUNCH IS SERVED WITH FLAK JACKETS —',blocks:[
+  {t:'k', x:'THE PRESS CLUB (OPTIONAL)'},
+  {t:'say', who:'WAITER', text:'“Table for two? Or are you eating with your press release again?”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Send your cash; the club will convert it to gravitas. That conversion rate is taxed twice, but intel follows whoever is overheard at table nine.'},
+  {t:'choice', prompt:'Table nine is where the backbench strategists trade. Attend?',
+    options:[
+      {x:'Buy lunch. Listen carefully.', set:'pc_buy', note:'Intelligence is catering plus silence.'},
+      {x:'Bring your own sandwiches to the door.', set:'pc_no', note:'Free lunch; the intel rate is zero and the glances are not.'}
+    ]},
+  {t:'battle', id:'spin_unit', reward:{cash:30, intel:3, cort:1},
+    note:'A Spin Unit tried to commandeer table nine’s narrative. Table nine objected at volume.'},
+  {t:'get', intel:3, note:'Affordable rumours, pre-seasoned.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Never accept the dessert tray here on a sitting day. It has been used to pass legislation.'}
+], next:()=> 'hub'};
+
+SCENES['zs_treasury']={zone:'— CANBERRA · TREASURY · BELOW THE ATRIUM —',blocks:[
+  {t:'k', x:'TREASURY — BASEMENT LEVEL · THE FISCAL DUNGEON'},
+  {t:'say', who:'FLUORESCENT HUM', text:'“The lifts stop at 4. The filing doesn’t. Welcome to the fiscal dungeon; filing hours apply.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Down here the Shadow Board keeps its counter-budget: the one where the fiscal mandate is choreographed by people no electorate has met. We take the mandate back the honest way — loudly, and slightly illegally.'},
+  {t:'battle', id:'shadow_ops', reward:{cash:40, intel:5, cort:1},
+    note:'The Shadow Board Operatives guard the stairs. Unlisted, unlit, keen to remain unquoted.'},
+  {t:'say', who:'SECURITY DOOR', text:'The badge reader blinks twice and files the rest. Down the basement corridor: a photocopier running at sabotage speed, and a judgement chair.', silh:true},
+  {t:'choice', prompt:'Two routes into the counter-budget vault:',
+    options:[
+      {x:'Con the photocopier into printing your credentials.', set:'tr_copies', note:'Money laundering, but for identity.'},
+      {x:'Walk the corridor the way auditors do: slowly, horribly.', set:'tr_walk', note:'Nothing attacks what it assumes is a process.'}
+    ]},
+  {t:'say', who:'THE COUNTER-BUDGET (AMPLIFIED)', text:'Line 411: buy silence, futures, and retirements. Line 412: misalign the mandates until the tax office itself files for stress leave. Line 413: YOU, OBSERVED.', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Here it comes. The Shadow Spokes-Treasurer: a position invented specifically so that a real Treasurer would have to be invented as well.'},
+  {t:'say', who:'THE SHADOW SPOKES-TREASURER', pid:'chalmers', text:'“I am the shadow the position casts on the wall, and the shadow holds the receipts. The fiscal mandate is parked in judgement. It has been parked since before you were sworn at.”'},
+  {t:'battle', id:'spokes_tr', reward:{cash:120, intel:10, cort:2},
+    note:'BOSS — the fiscal mandate is parked in judgement. It tables the counter-budget until you collapse.'},
+  {t:'say', who:'JUDGEMENT CHAIR (FINALLY CONVINCED)', text:'HONEST LEDGER RECOGNISED. FISCAL MANDATE: REALLOCATED. THE COUNTER-BUDGET IS ADJOURNED INDEFINITELY AND PERSONALLY.', silh:true},
+  {t:'get', cash:50, note:'Requisition “consulting fees” reclaimed from the counter-budget’s line 411.'},
+  {t:'mandate', which:'fiscal', accord:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The Fiscal Mandate is yours. With both ledgers half-turned, the two seats of power can be moved toward each other. Everyone on the roster has learned THE ACCORD — hold it until the monetary mandate is won.'},
+  {t:'mile', id:'M4', phase:4, phaseName:'BONDMAGEDDON COUNTDOWN',
+    sub:'The yield curve just exhaled and then screamed. Encounters get brutal, shop prices inflate — the market knows what the fiscal mandate means. The RBA vault awaits the monetary half.'}
+], next:()=> 'hub'};
+
+SCENES['zs_qantas']={zone:'— CANBERRA · QANTAS LOUNGE —',blocks:[
+  {t:'k', x:'QANTAS LOUNGE'},
+  {t:'say', who:'STAFF', text:'“We currently have milk and a waitlist. Same as Treasury. The lounge is the calmest place in Canberra, which is regrettably a policy outcome.”', silh:true},
+  {t:'get', intel:1, once:'qantas_used', note:'Overheard risotto was covered: one strategist’s fiscal plan, rate-talk included.'},
+  {t:'flagOnce', set:'qantas_used', note:'LOUNGE TAPED'},
+  {t:'battle', id:'quant_wombat', reward:{cash:35, intel:3, cort:1},
+    note:'A Quant Wombat contested the buffet queue with out-of-sample modelling.'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Parliament is the theatre, the Press Club is the catering, and the Treasury basement is where we go to be judged. Choose your violence accordingly.'}
+], next:()=> 'hub'};
+
+SCENES['zs_rba']={zone:'— MARTIN PLACE · THE BUILDING WITH A BASEMENT FORTRESS —',blocks:[
+  {t:'k', x:'RBA BOARDROOM VAULT · ACCORD SUMMIT'},
+  {t:'say', who:'THE DOOR ITSELF', text:'“The Governor sees everyone eventually. Sometimes the room does it for her.”', silh:true},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'Both mandates in hand. Two keys that must be turned in the same direction, or the whole yield curve eats itself. The gauntlet between us and the Boardroom is real: Security, the rival you have not finished, and whatever is dark about the dark pool.'},
+  {t:'say', who:'ACCREDITATION DESK', text:'“Summit access pending. Bring the mandates. Bring the grudge. Bring everything, actually — it all counts.”', silh:true}
+], next:()=> 'hub'};
+
+/* — M5: the gauntlet (three fights on the way up) — */
+SCENES['m5_gauntlet']={zone:'— RBA BOARDROOM VAULT · ENTRY LEVELS —',blocks:[
+  {t:'k', x:'M5 · ACCORD SUMMIT · THE GAUNTLET (1/3)'},
+  {t:'say', who:'BUILDING SECURITY (PLURAL, FORMAL)', text:'“The building has been on alert since the fiscal mandate moved. Shadow Board Operatives were seen using the freight lift. They still cannot locate the stairs.”', silh:true},
+  {t:'battle', id:'shadow_ops', reward:{cash:55, intel:6, cort:1},
+    note:'GAUNTLET 1/3 — the Shadow Board’s last unpaid contractors.'},
+  {t:'say', who:'THE FIRST RIVAL (AGAIN)', text:'“Round two. I brought the mandate I was promised, the audience you refused, and hair that has categorically improved. This is for the chair.”'},
+  {t:'battle', id:'rivalFirst', reward:{cash:130, intel:10, cort:2},
+    note:'GAUNTLET 2/3 — the rival of record, with the mandate everyone expected them to keep.'},
+  {t:'joinrival'},
+  {t:'say', who:'THE FORMER RIVAL', text:'“The mandate was always the point. Fine. Give me a chair and I will vote with the minutes.”'},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'One level of dark remains. The dark pool predates the building. It predates the market. It once saw a portfolio it liked — it waited, and it is ready to wait.'},
+  {t:'battle', id:'kraken', reward:{cash:150, intel:12, cort:2},
+    note:'GAUNTLET 3/3 — the Dark Pool Kraken. You cannot see it. It can see your funds.'},
+  {t:'say', who:'ELEVATOR (OBSERVATIONAL)', text:'“The Boardroom is one floor up. The air is already different up there: colder, calmer, and priced accordingly.”', silh:true}
+], next:()=> 'm5_bullock'};
+
+/* — M5: Bullock, two phases + the script twist — */
+SCENES['m5_bullock']={zone:'— RBA BOARDROOM · THE MANDATES ARE ON THE TABLE —',blocks:[
+  {t:'k', x:'M5 · THE FINAL FIGHT · PHASE ONE'},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“You have been rehearsing for this in corridor conversations and press-room shoulders. I have been reading the budget. Yours is coherent. That is the alarming part.”'},
+  {t:'battle', id:'bullock_p1', reward:{cash:0, intel:0, cort:2},
+    note:'PHASE ONE — she spends your cash to fund her turn order. Defend the ledger, then change it.'},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“Phase one concluded. Historic verdict pending. Office holders have a way of bending history around their own appointments. Choose your angle: the deal, the audit, or the helicopter.”'},
+  {t:'choice', prompt:'THE SCRIPT TWIST — how does the summit end?',
+    options:[
+      {x:'Offer her THE ACCORD — both keys turned together.', set:'summit_offer', goto:'m5_test', note:'Two mandates, one aligned budget. The plot, structurally.'},
+      {x:'Crush. The doubters become headcounts.', set:'summit_crush', goto:'m5_crush', note:'The Iron Ledger ending lives here.'},
+      {x:'Helicopter money. Everything everywhere all at once.', set:'summit_heli', goto:'m5_heli', note:'Chaos meme ending. Yours. Own it.'}
+    ]}
+], next:()=> 'hub'};
+
+/* — summit test: Bullock fights to hear whether THE ACCORD holds — */
+SCENES['m5_test']={zone:'— RBA BOARDROOM · PHASE TWO · THE ACCORD HOLDING PATTERN —',blocks:[
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“Then show me the Accord can hold a live rate-rise while both of you keep talking. If it wobbles, the mandate stays mine.”'},
+  {t:'battle', id:'bullock_p2', reward:{cash:200, intel:12, cort:0},
+    note:'PHASE TWO — not malice; a stress test at full rate. Hold the line.'},
+  {t:'mandate', which:'money'},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“The Accord holds. Signed at the table by the only two people still holding the pens.”'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* — summit crush: the Iron Ledger — */
+SCENES['m5_crush']={zone:'— RBA BOARDROOM · PHASE TWO · THE SHEET DOES NOT BALANCE —',blocks:[
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“You want the mandates without the mandatee. Every second Treasurer has asked. Perhaps you will be the first to notice what that costs.”'},
+  {t:'battle', id:'bullock_p2', reward:{cash:200, intel:12, cort:2},
+    note:'PHASE TWO — she fights like the institution she is: forever, and literally.'},
+  {t:'mandate', which:'money'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* — summit heli: chaotic neutral — */
+SCENES['m5_heli']={zone:'— RBA BOARDROOM · FORWARD GUIDANCE UNBOUND —',blocks:[
+  {t:'say', who:'THE ROTORS (ABOVE THE TABLE)', text:'Helicopter. Not one helicopter. A fleet. Each one is a wish with rotors — and the wish, inconveniently, is funded.', silh:true},
+  {t:'say', who:'GOVERNOR BULLOCK', pid:'bullock',
+    text:'“No. Do not …”'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* — verdict replay from the hub after the game ends — */
+SCENES['m5_verdict']={zone:'— MARTIN PLACE · THE BUILDING STILL HUMS —',blocks:[
+  {t:'k', x:'THE FINAL VERDICT — REPLAY'},
+  {t:'endgame'}
+], next:()=> 'hub'};
+
+/* hub: shared room between chapters; menu built dynamically (see buildHubOptions) */
+SCENES['hub']={zone:()=> '— MARTIN PLACE HUB · PHASE '+G.phase+' · '+G.phaseName+' —',blocks:[
+  {t:'k', x:()=>'MARTIN PLACE · PHASE '+G.phase+' · '+G.phaseName},
+  {t:'say', who:'THE BUTLER', pid:'butler',
+    text:'The hub. Bench swaps at hubs, intel ops, the servo. The city re-ratchets each milestone: shops get costlier, intel gets pricier, encounters get worse. Clockwork.'},
+  {t:'loop'}
+], next:()=> 'hub'};
+
+/* ============================================================
+   [4] ENGINE — state, flags, clock, autosave, audio
+   ============================================================ */
+const SAVE_KEY='bcrpg_save_v1';
+let G=null;
+
+/* ===TWEAK TABLE: economy — the mood (CALM/BOOM/FRENZY/PANIC) drives prices,
+   intel sell rates and encounter difficulty. All knobs live in MOOD_MODS.=== */
+const MOOD_MODS={
+  CALM:  {shop:1.00, sell:2, enc:1.00, open:{}},                 /* neutral tape */
+  BOOM:  {shop:0.85, sell:2, enc:1.00, open:{cash:15}},          /* prices down, opening bonus cash */
+  FRENZY:{shop:1.10, sell:3, enc:1.06, open:{cort:1, intel:1}},  /* ten-percent swings; adrenaline (P6: enc 1.10→1.06 — thin crews kept coin-flipping the 4-op fights) */
+  PANIC: {shop:1.30, sell:4, enc:1.18, open:{intel:3}}           /* expensive, violent, finally intel-rich */
+};
+const ECON={
+  shopMult:()=> MOOD_MODS[G.mood].shop,
+  sellRate:()=> MOOD_MODS[G.mood].sell,
+  enc:()=> MOOD_MODS[G.mood].enc * (DIFFS[G.diff]||DIFFS.st).enc
+};
+/* ===P6 TWEAK TABLE: title-screen difficulty (EASY/STANDARD/HARD). The host's
+   pick lives in G.diff and the whole crew inherits it via the {t:'g'} sync.
+   foe   — scales foe HP and ATK in mkFoeUnit()
+   enc   — multiplies the encounter power curve
+   loss  — scales the retreat (withdrawal-fee) fraction
+   reward— scales battle win cash */
+const DIFFS={
+  ea:{n:'EASY',     foe:0.85, enc:0.9,  loss:0.75, reward:1.2},
+  st:{n:'STANDARD', foe:1,    enc:1,    loss:1,    reward:1},
+  ha:{n:'HARD',     foe:1.10, enc:1.10, loss:1.15, reward:0.85}
+};
+const DIFF_NOTE={
+  ea:'foes −15% · gentler tape · kinder fees',
+  st:'the published settings — satire intact',
+  ha:'foes +10% · steeper tape · thinner payouts'
+};
+function selDiff(){
+  try{ return localStorage.getItem('bcrpg_diff')||'st'; }catch(e){ return 'st'; }
+}
+/* ===TWEAK TABLE: rival rotation (first-eligible wins) === */
+const RIVAL_ORDER=['simring','max','tan','lucian'];
+/* ===TWEAK TABLE: zone travel targets === */
+const ZSCENES={
+  martin_hub:'hub', quickstop:'zs_quickstop', b4_tower:'zs_b4',
+  hedge_fund:'zs_hedge', backrooms:'zs_backrooms', the_terminal:'zs_terminal',
+  newsroom:'zs_newsroom', coal_pent:'zs_coalpent', qantas_lounge:'zs_qantas',
+  parliament:'zs_parliament', press_club:'zs_pressclub',
+  treasury:'zs_treasury', rba_vault:'zs_rba'
+};
+
+function freshState(pcid){
+  return {
+    v:1,
+    pc:pcid||null,
+    cash:20, intel:2, cort:0,
+    phase:1, phaseName:'GRUMBLING YIELDS',
+    mile:{M0:false,M1:false,M2:false,M3:false,M4:false,M5:false},
+    mandates:{fiscal:false, money:false},
+    flags:{},
+    zones:{unlocked:['martin_hub','quickstop'], visited:[]},
+    party: pcid? [pcid] : [],
+    bench:[],
+    items:{},
+    upgrades:{},   /* P3: bug pinned, dossier pinned etc. */
+    st:{},         /* P2: persistent hp/mp per roster member */
+    mood:'CALM',
+    diff: selDiff(),   /* P6: title-screen difficulty, carried in the save + {t:'g'} sync */
+    fatigue:{},    /* P6: per-site foe fatigue counters (operative fatigue) */
+    deckPos:0,
+    scene:null, block:0,
+    log:[], muted:false,
+    mpSeats:[],    /* multiplayer: character ids controlled by human players */
+    mpNames:{}     /* multiplayer: character id → player display name */
+  };
+}
+
+function save(silent){
+  if(NET.role==='client') return;   /* clients never write state; they mirror it */
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify(G));
+    if(!silent){
+      const c=document.createElement('div'); c.className='savechip'; c.textContent='AUTOSAVED';
+      document.body.appendChild(c); setTimeout(()=>c.remove(),2000);
+    }
+  }catch(e){}
+  try{ document.body._lastSaveCash=G.cash; }catch(_){}
+  NET.syncG();
+}
+function loadSave(){
+  try{
+    const s=JSON.parse(localStorage.getItem(SAVE_KEY));
+    if(s && s.v===1) return s;
+  }catch(e){}
+  return null;
+}
+function deleteSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
+
+const F=k=> !!G.flags[k];
+function setF(k,v){ G.flags[k]=(v===undefined? true: v); }
+function hasF(k){ return !!G.flags[k]; }
+function log(x){ G.log.unshift(x); if(G.log.length>40) G.log.pop(); }
+
+/* — tiny WebAudio bleeps (P6 expands/selects) — */
+let AC=null;
+function beep(kind){
+  if(!G || G.muted) return;
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended') AC.resume();
+    const o=AC.createOscillator(), g=AC.createGain();
+    o.connect(g); g.connect(AC.destination);
+    const t=AC.currentTime;
+    let f=440, dur=.08, type='square', vol=.028, glide=null;
+    kind=kind||'tick';
+    if(kind==='coin'){ type='triangle'; dur=.14; glide=[660,990]; }
+    else if(kind==='intel'){ type='sine'; f=660; dur=.1; glide=[660,880]; }
+    else if(kind==='cort'){ type='sawtooth'; f=180; dur=.14; }
+    else if(kind==='bad'){ type='sawtooth'; f=110; dur=.2; vol=.04; }
+    else if(kind==='hit'){ type='triangle'; f=300; dur=.06; }
+    else if(kind==='tick'){ f=520; dur=.05; }
+    else if(kind==='stamp'){ type='square'; f=140; dur=.25; vol=.05; }
+    o.type=type;
+    if(glide){ o.frequency.setValueAtTime(glide[0],t); o.frequency.setValueAtTime(glide[1],t+dur/2); }
+    else o.frequency.setValueAtTime(f,t);
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.start(t); o.stop(t+dur+.02);
+  }catch(e){}
+}
+
+/* — P6: three/four-note WebAudio stingers. No assets, all chiptune dignity.
+   Clients hear these too: result beats carry the cue name in m.cue. — */
+function stinger(name){
+  if(!G || G.muted) return;
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended') AC.resume();
+    const lines={
+      win:    [[392,0,.12],[494,.11,.12],[587,.22,.22]],           /* site secured */
+      lose:   [[330,0,.14],[294,.14,.14],[233,.28,.30]],           /* withdrawal fee */
+      mile:   [[262,0,.1],[330,.1,.1],[392,.2,.1],[523,.3,.28]],   /* crisis advances */
+      verdict:[[440,0,.12],[554,.12,.12],[659,.24,.12],[880,.36,.4]], /* ending fanfare */
+      fight:  [[220,0,.08],[330,.09,.1],[440,.19,.14]],            /* battle start */
+      boss:   [[110,0,.22],[139,.22,.22],[110,.44,.34]],           /* boss enters, ominous */
+      ko:     [[196,0,.12],[147,.13,.16],[98,.28,.24]],            /* party member down */
+      item:   [[523,0,.07],[659,.08,.07],[784,.16,.12]]            /* gear/menu flourish */
+    };
+    (lines[name]||[]).forEach(n=>{
+      const o=AC.createOscillator(), g=AC.createGain();
+      o.type='square'; o.frequency.setValueAtTime(n[0],AC.currentTime+n[1]);
+      g.gain.setValueAtTime(.02,AC.currentTime+n[1]);
+      g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+n[1]+n[2]);
+      o.connect(g); g.connect(AC.destination);
+      o.start(AC.currentTime+n[1]); o.stop(AC.currentTime+n[1]+n[2]+.02);
+    });
+  }catch(e){}
+}
+/* — P6: play a cue locally and relay it to the crew (clients hear the same
+   stinger through the {t:'cue'} beat without a duplicate on the host). — */
+function cueCrew(name){
+  stinger(name);
+  if(NET.role==='host'&&NET.started) try{ NET.bcast({t:'cue', name}); }catch(e){}
+}
+
+/* — toasts & resource application — */
+function toast(x,cls){
+  if(NET.role==='host'&&NET.started) NET.bcast({t:'toast', x, cls:cls||''});
+  const d=document.createElement('div');
+  d.className='toast '+(cls||''); d.textContent=x;
+  $('toasts').appendChild(d);
+  setTimeout(()=>d.remove(),2700);
+}
+function applyEffects(e){
+  if(!e) return 0;
+  let any=0;
+  if(e.cash){ G.cash+=e.cash; toast('💰 +$'+e.cash); beep('coin'); any=1; }
+  if(e.intel){ G.intel+=e.intel; toast('🛈 +'+e.intel,'intel'); beep('intel'); any=1; }
+  if(e.cort){ G.cort=Math.max(0,Math.min(9,G.cort+e.cort)); any=1;
+    if(e.cort>0){ toast('🔥 +'+e.cort,'bad'); beep('cort'); } }
+  if(e.note) log(e.note);
+  if(any) renderHUD();
+  return any;
+}
+
+/* — milestone clock: advances ONLY on milestone scenes — */
+function advanceMilestone(m,phase,phaseName,sub){
+  G.phase=phase; G.phaseName=phaseName;
+  if(m && G.mile[m]!==undefined) G.mile[m]=true;
+  unlockZones(m,phase);
+  log('MILESTONE '+m+' → '+phaseName);
+  stinger('mile');   /* P6: replaces the flat error beep */
+  $('mstoneBig').textContent=(m||'M?')+' — CRISIS ADVANCES';
+  $('mstoneSub').textContent=
+    'PHASE '+phase+': '+phaseName+' — encounters ratchet, shop prices swell, intel gets dearer.'+
+    (sub? '\n'+sub : '');
+  renderHUD();
+  openOv('mstone');
+  /* multiplayer: the crew sees the same card on their screens */
+  if(NET.role==='host'&&NET.started)
+    NET.beat({t:'ms', m:m||'M?', phase, phaseName, sub:sub||''});
+  /* P3 market deck: draws fire at milestones from M1 onward (the prologue
+     stays readable with CALM baseline; deck order is tweakable in TWEAK) */
+  if(m && m!=='M0') drawEventCard('milestone '+m);
+}
+/* ===TWEAK TABLE: milestone → zone unlocks === */
+function unlockZones(m,p){
+  const map={
+    M1:['b4_tower','hedge_fund','the_terminal','newsroom'],
+    M2:['backrooms','coal_pent'],
+    M3:['qantas_lounge','parliament','press_club','treasury'],
+    M4:['rba_vault'],   /* the vault opens once the fiscal mandate is won */
+    M5:[]
+  };
+  (map[m]||UNLOCK_BY_PHASE[p]||[]).forEach(z=>{
+    if(!G.zones.unlocked.includes(z)) G.zones.unlocked.push(z);
+  });
+}
+const UNLOCK_BY_PHASE={
+  2:['b4_tower','hedge_fund','the_terminal','newsroom'],
+  3:['backrooms','coal_pent'],
+  4:['rba_vault'],
+  5:[]
+};
+/* ===P3: the market deck reacts to milestones and zone visits === */
+function drawEventCard(reason){
+  if(!G) return;
+  const ev=EVENTS[G.deckPos % EVENTS.length];
+  G.deckPos=(G.deckPos+1)%EVENTS.length;
+  const prevMood=G.mood;
+  G.mood=ev.mood;
+  log('EVENT: '+ev.name+' → mood '+G.mood+' ('+reason+')');
+  /* synergy payouts to whoever is on the roster */
+  const pays=[];
+  Object.entries(EVENT_SYN[ev.id]||{}).forEach(([id,fxy])=>{
+    if(G.party.includes(id)||G.bench.includes(id)){
+      applyEffects({cash:fxy.cash||0, intel:fxy.intel||0, cort:fxy.cort||0});
+      pays.push(CHARS[id].name+' pockets the synergy');
+    }
+  });
+  /* mood openings land at next battle; numbers shown on the card */
+  const m=MOOD_MODS[G.mood];
+  $('evName').textContent='📈 '+ev.name+' — '+G.mood;
+  $('evLine').textContent=ev.d;
+  $('evFx').innerHTML=
+    '· SHOP PRICES ×'+m.shop.toFixed(2)+
+    ' · SELL INTEL $'+m.sell+
+    ' · ENCOUNTERS ×'+m.enc.toFixed(2)+
+    (Object.keys(m.open).length? '<br>· battlefield openings: '+
+      Object.entries(m.open).map(([k,v])=>({cash:'+$'+v, intel:'+'+v+'🛈', cort:'+'+v+'🔥'}[k])+' '+k).join(', ')
+      : '')+
+    (pays.length? '<br>· synergy: '+pays.join(' · '):'');
+  log('MOOD '+prevMood+'→'+G.mood+' · shop×'+m.shop+' sell$'+m.sell);
+  beep('intel');
+  renderHUD(); save(true);
+  if(NET.role==='host'&&NET.started)
+    NET.bcast({t:'ev', name:ev.name, mood:G.mood, d:ev.d,
+      fx:$('evFx').innerHTML});
+  openOv('evov');
+}
+
+/* ============================================================
+   [5] UI — screens, HUD, scene renderer
+   ============================================================ */
+const $=id=> document.getElementById(id);
+function show(id){
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  $(id).classList.add('on');
+}
+function openOv(id){ $(id).classList.add('on'); }
+function closeOv(id){ $(id).classList.remove('on'); }
+
+function imgTag(src){
+  const im=document.createElement('img');
+  im.src=src; /* caller attaches onerror after append */
+  return im;
+}
+function sayPortrait(pid,self){
+  const f=document.createElement('div');
+  f.className='pframe'+(self?' pcself':'');
+  if(pid && PORTRAITS[pid]){
+    const im=imgTag(encodeURI(PORTRAITS[pid]));
+    im.onerror=()=>{ f.classList.add('silh'); im.remove(); };
+    f.appendChild(im);
+  } else f.classList.add('silh');
+  const t=document.createElement('div'); t.className='tape'; f.appendChild(t);
+  return f;
+}
+
+function renderHUD(){
+  if(!G) return;
+  $('vcash').textContent='$'+G.cash;
+  $('vintel').textContent=G.intel;
+  $('vmand').textContent=(G.mandates.fiscal?1:0)+(G.mandates.money?1:0)+'/2';
+  const vp=$('vpips'); vp.innerHTML='';
+  for(let i=0;i<9;i++){
+    const p=document.createElement('span');
+    p.className='pip'+(i<G.cort?' on':'')+(i>=6&&i+1<=G.cort?' hot':'');
+    vp.appendChild(p);
+  }
+  const regime=$('vregime');
+  regime.textContent='MOOD: '+G.mood;
+  const hot=G.cort>=7;
+  regime.className='chip '+(hot? 'red':'gold');
+  regime.textContent='MOOD: '+G.mood+(hot?' · PARTY SHAKEN':'');
+  $('phasechip').textContent='PHASE '+G.phase+' · '+G.phaseName;
+  $('chname').textContent=G.pc? ' — '+CHARS[G.pc].name.toUpperCase():'';
+  /* milestone chips */
+  const hc=$('hclock'); hc.innerHTML='';
+  const keys=Object.keys(G.mile);
+  let nowSet=false;
+  keys.forEach(k=>{
+    const span=document.createElement('span');
+    let cls='chip mchip';
+    if(G.mile[k]) cls+=' done';
+    else if(!nowSet){ cls+=' now'; nowSet=true; }
+    span.className=cls; span.textContent=k;
+    hc.appendChild(span);
+  });
+  /* party strip */
+  const pt=$('party'); pt.innerHTML='';
+  G.party.slice(0,4).forEach(id=>{
+    const ch=CHARS[id]; if(!ch) return;
+    const d=document.createElement('div');
+    d.className='pcard'+(id===G.pc?' pc0':'');
+    const fr=document.createElement('div'); fr.className='pframe';
+    fr.style.width='40px'; fr.style.minWidth='40px'; fr.style.height='40px';
+    const im=imgTag(encodeURI(PORTRAITS[id]));
+    im.style.width='40px'; im.style.height='40px';
+    im.onerror=()=>{ fr.classList.add('silh'); im.remove(); };
+    fr.appendChild(im);
+    d.appendChild(fr);
+    ensurePartyStats();
+    const hpPct=Math.round(100*G.st[id].hp/maxStats(id).maxhp);
+    d.insertAdjacentHTML('beforeend',
+      '<div class="bi"><div class="nm">'+ch.name+'</div>'+
+      '<div style="height:4px;background:rgba(255,255,255,.12);margin:2px 0">'+
+      '<div style="height:4px;width:'+hpPct+'%;background:'+
+      (hpPct<35? 'var(--red)':'#7fd694')+'"></div></div>'+
+      '<div class="cl" style="font-size:10px">HV '+G.st[id].hp+'/'+maxStats(id).maxhp+
+      ' · MP '+G.st[id].mp+'</div></div>');
+    pt.appendChild(d);
+  });
+  const b=document.createElement('div'); b.className='benchcount';
+  b.textContent='ROSTER '+G.party.length+(G.bench.length? ' · BENCH '+G.bench.length:'');
+  pt.appendChild(b);
+  renderOps();
+  /* multiplayer: keep the crew's HUD close to the truth mid-battle too
+     (the 120ms debounce batches this instead of spamming the wire) */
+  if(NET.role==='host'&&NET.started) NET.syncG();
+}
+
+/* — side ops panel: zones + party kit + log — */
+function renderOps(){
+  const o=$('ops'); o.innerHTML='';
+  const h1=document.createElement('h3'); h1.textContent='ZONES'; o.appendChild(h1);
+  const zoneKeys=Object.keys(ZONES);
+  zoneKeys.forEach(zk=>{
+    const z=ZONES[zk];
+    const un=G.zones.unlocked.includes(zk);
+    const btn=document.createElement('button');
+    btn.className='zonebtn'+(un? '': ' locked'); btn.disabled=!un;
+    btn.setAttribute('data-zk',zk);
+    btn.innerHTML=z.name+(un? '': ' <span class="lock">🔒</span>');
+    btn.title=z.d;
+    if(un) btn.onclick=()=>{ beep('tick'); visitZone(zk); };
+    else btn.onclick=()=>{ toast('LOCKED — arrives with a later phase','bad'); };
+    o.appendChild(btn);
+  });
+  const h2=document.createElement('h3'); h2.textContent='PARTY'; o.appendChild(h2);
+  G.party.forEach(id=>{
+    const ch=CHARS[id];
+    const r=document.createElement('div'); r.className='row';
+    r.innerHTML='<span style="color:'+ch.color+'">'+ch.name+'</span>'+
+      '<span class="muted">'+(ch.sig||[]).join(' · ')+'</span>';
+    o.appendChild(r);
+  });
+  const h3=document.createElement('h3'); h3.textContent='LOG'; o.appendChild(h3);
+  G.log.slice(0,12).forEach(x=>{
+    const r=document.createElement('div'); r.className='row muted'; r.textContent=x;
+    o.appendChild(r);
+  });
+}
+
+function visitZone(zk){
+  if(!NET.uiGate()) return;
+  const scene=ZSCENES[zk];
+  if(!scene){
+    toast(ZONES[zk].name+' — arrives with a later phase','intel'); beep('intel'); return;
+  }
+  if(!G.zones.visited.includes(zk)){
+    log('FIRST VISIT: '+ZONES[zk].name);
+    if(!G.zones.unlocked.includes(zk)) G.zones.unlocked.push(zk);
+  }
+  if(!G.zones.visited.includes(zk)) G.zones.visited.push(zk);
+  gotoScene(scene);
+}
+
+/* — scene runner — */
+const R={ scene:null, bi:0, beats:0 };
+
+function gotoScene(id, fromSave){
+  if(!SCENES[id]){ toast('SCENE MISSING: '+id,'bad'); id='hub'; }
+  R.scene=id;
+  R.bi= fromSave? (G.block||0):0;
+  G.scene=id; G.block=R.bi;
+  renderScene();
+  save(true);
+}
+
+function renderScene(){
+  const st=$('stage'); st.innerHTML='';
+  const sc=SCENES[R.scene];
+  const kick=document.createElement('div');
+  kick.className='beat kicker';
+  kick.textContent= sc ? (typeof sc.zone==='function'? sc.zone(): sc.zone) : '—';
+  st.appendChild(kick);
+  R.beats=0;
+  /* multiplayer: a fresh scene — reset the replay buffer and sync zone */
+  if(NET.role==='host'&&NET.started){
+    NET.replay=[{t:'scene', zone:kick.textContent}];
+    NET.bcast({t:'scene', zone:kick.textContent});
+  }
+  /* replay already-passed blocks? No — from load mid-scene we resume at saved index */
+  runBlock();
+}
+
+function advance(i){
+  R.bi=(i!==undefined)? i: R.bi+1;
+  G.block=R.bi;
+  save(true);
+  runBlock();
+}
+
+/* rivals: first eligible not-PC, not-in-roster face */
+function rivalFirst(){
+  for(const id of RIVAL_ORDER){
+    if(id!==G.pc && !G.party.includes(id) && !G.bench.includes(id)) return id;
+  }
+  return RIVAL_ORDER[RIVAL_ORDER.length-1];
+}
+
+/* hub menu — story hooks are milestone-driven, side content always present */
+function buildHubOptions(){
+  const o=[
+    {x:'Quikstop — the servo (shop)', panel:'shop'},
+    {x:'Bench swap', panel:'swap'},
+    {x:'Intel ops (sell intel works)', panel:'ops'},
+    {x:'The Backrooms — purple door', panel:'backrooms'}
+  ];
+  if(!G.mile.M1)       o.push({x:'Continue story → The Big Four Tower lobby', goto:'m1_lobby'});
+  else if(!G.mile.M2)  o.push({x:'Continue story → Follow the Money (Shadow Board)', goto:'m2_infilt'});
+  else if(!G.mile.M3)  o.push({x:'Continue story → Fly North, Canberra', goto:'m3_flynorth'});
+  else if(!F('parliament_done'))
+                       o.push({x:'Continue story → Parliament House (Question Time)', goto:'zs_parliament'});
+  else if(!G.mile.M4)  o.push({x:'Continue story → Treasury basement — the fiscal dungeon', goto:'zs_treasury'});
+  else if(!G.mile.M5)  o.push({x:'Continue story → RBA ACCORD SUMMIT — the gauntlet & the Governor', goto:'m5_gauntlet'});
+  else                 o.push({x:'The verdict — read it again, forever', goto:'m5_verdict'});
+  return o;
+}
+
+function runBlock(){
+  const sc=SCENES[R.scene]; if(!sc) return;
+  if(R.bi>=sc.blocks.length){ endOfScene(sc); return; }
+  const b=sc.blocks[R.bi];
+  switch(b.t){
+    case 'k':     addKicker(typeof b.x==='function'? b.x(): b.x); advance(); return;
+    case 'flag':  if(b.set) setF(b.set,b.val);
+                  if(b.note) toast('⚑ '+b.note); advance(); return;
+    case 'flagOnce': if(b.set && !F(b.set)){ setF(b.set,b.val); if(b.note) toast('⚑ first: '+b.note,''); }
+                     else if(b.note) toast('⚑ '+b.note+' (already logged)','');
+                     advance(); return;
+    case 'mandate': {   /* P4: mandate grant + THE ACCORD unlocks at M4 */
+      if(b.which && !G.mandates[b.which]){
+        G.mandates[b.which]=true;
+        beep('stamp');
+        toast((b.which==='fiscal'? 'FISCAL':'MONETARY')+' MANDATE — SEIZED','intel');
+        log('MANDATE WON: '+b.which);
+      }
+      if(b.accord && !F('accord_unlocked')){
+        setF('accord_unlocked',true);
+        toast('🎓 THE ACCORD is learned by all (MP 0, ultimate)','intel');
+        log('THE ACCORD unlocked');
+      }
+      renderHUD(); advance(); return;
+    }
+    case 'mile':  advance(); advanceMilestone(b.id,b.phase,b.phaseName,b.sub); return;
+    case 'endgame': showEnding(computeVerdict()); return;
+    default:      renderVisible(b); return;
+  }
+}
+
+/* blocks that need a click (say/get/choice/join/battle/loop) */
+function renderVisible(b){
+  const st=$('stage');
+  if(b.t==='say'){
+    addDialogue(b); save(true); return;
+  }
+  if(b.t==='get'){
+    if(b.once && F(b.once)){ /* once-per-world bonus already banked */
+      addDialogue({who:'MARGIN NOTES', text:'· '+b.note+ ' (already banked for this world-state)'});
+      return;
+    }
+    const any=applyEffects(b);
+    if(b.note) addDialogue({who:'MARGIN NOTES', text:'· '+b.note});
+    const cont=()=>advance();
+    if(any && !b.note){ setTimeout(cont, 420); } else cont();
+    return;
+  }
+  if(b.t==='join'){
+    joinChar(b.id);
+    if(b.say) addDialogue({who:CHARS[b.id].name, pid:b.id, text:b.say});
+    return;
+  }
+  if(b.t==='joinif'){
+    const id=(G.pc===b.who)? b.alt : b.who;
+    joinChar(id);
+    addDialogue({who:CHARS[id].name, pid:id,
+      text: id===b.alt? b.altSay : (b.say||'“At your service. I have cleared my evenings indefinitely.”')});
+    return;
+  }
+  if(b.t==='allyChoice'){ addAllyChoice(b); save(true); return; }
+  if(b.t==='joinrival'){
+    const id=rivalFirst();
+    joinChar(id);
+    addDialogue({who:CHARS[id].name, pid:id,
+      text:'“Consider me a colleague with ambitious paperwork.”'});
+    advance();
+    return;
+  }
+  if(b.t==='choice'){ addChoice(b); save(true); return; }
+  if(b.t==='battle'){
+    const bb=(b.id==='rivalFirst')? {...b, id:rivalFirst()}: b;
+    addBattleStub(bb); save(true); return;
+  }
+  if(b.t==='panel'){ openStub(b.panel); advance(); return; }
+  if(b.t==='made'){
+    const w=document.createElement('div'); w.className='beat';
+    const n=(G.flags.madeVisits||0)+1; G.flags.madeVisits=n;
+    const lines=[
+      'The purple door has no signage and perfectly smooth hinges. You open it. Behind it: a short hallway.',
+      'The hallway ends at a second purple door. It is warmer, and you do not remember walking.',
+      'The third door opens onto the first hallway. Somewhere a sticker quietly acknowledges you.'
+    ];
+    w.innerHTML='<div style="color:#b18cff;max-width:560px;margin:0 auto;padding:10px 0">'+
+      lines[Math.min(n-1,2)]+'</div>';
+    if(n<3) w.insertAdjacentHTML('beforeend',
+      '<div class="activity" style="text-align:center;color:var(--dim)">PURPLE DOOR · '+(3-n)+' VISIT'+(3-n===1?'':'S')+' REMAIN</div>');
+    else toast('🟣 A SECRET WAS ACKNOWLEDGED','intel');
+    if(n>=3){
+      setF('made_secret',true); log('MADE sticker earned');
+      /* the secret optional recruit: one unclaimed face emerges from the purple door */
+      const rid=ROSTER.find(id=> id && id!==G.pc && !G.party.includes(id) && !G.bench.includes(id));
+      if(rid){
+        joinChar(rid);
+        addDialogue({who:CHARS[rid].name, pid:rid,
+          text:'“I was behind the door the whole time. MAKED me wait. Do not ask what it costs; it does not cost, it only counts.”'});
+        log('SECRET RECRUIT via the purple door: '+CHARS[rid].name);
+      } else {
+        addDialogue({who:'THE HALLWAY', text:'“Everyone you had is here. The door is sad, briefly, and then it is a door.”'});
+      }
+    }
+    log('MADE: purple door visit #'+n);
+    if(NET.role==='host'&&NET.started)
+      NET.beat({t:'made', n, recruit: rid? CHARS[rid].name: null});
+    if(n<3){
+      const ok=document.createElement('button'); ok.textContent='CLOSE THE DOOR';
+      ok.onclick=()=>{ beep('intel'); NET.uiSkip(); };
+      w.appendChild(ok);
+    }
+    /* on visit 3 the dialogue line advances — no double-advance door button */
+    st.appendChild(w); st.scrollTop=st.scrollHeight;
+    return;
+  }
+  if(b.t==='loop'){
+    addChoice({prompt:'What next?', options:buildHubOptions()});
+    return;
+  }
+  advance(); /* unknown type: skip forward */
+}
+
+/* recruit choice: pool minus PC and existing roster */
+function addAllyChoice(b){
+  const pool=(b.pool||[]).filter(id=> id!==G.pc && !G.party.includes(id) && !G.bench.includes(id));
+  const st=$('stage');
+  retireBeats();
+  /* multiplayer: open join decision — first player to click signs them */
+  if(NET.role==='host'&&NET.started){
+    if(pool.length){
+      NET.CHOICE={kind:'ally', b, pool, open:true};
+      NET.beat({t:'choice', prompt:b.prompt+' (SIGNING)',
+        options:pool.map(id=>({x:'<span style="color:'+CHARS[id].color+'">'+CHARS[id].name+
+          '</span> — '+CHARS[id].style,
+          note:CHARS[id].blurb+' ◆ '+(CHARS[id].sig||[]).join(' · ')}))});
+    } else {
+      NET.CHOICE={kind:'ally', b, pool:[], open:true};
+      NET.beat({t:'choice', prompt:b.prompt,
+        options:[{x:'Everyone’s already on the payroll. Proceed.', note:''}]});
+    }
+  }
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+b.prompt;
+  w.appendChild(pr);
+  if(!pool.length){
+    /* every candidate already rostered/rivalled — don't soft-lock the scene */
+    const n=document.createElement('button'); n.className='chbtn';
+    n.textContent='Everyone’s already on the payroll. Proceed.';
+    n.onclick=()=>{ beep('tick'); NET.CHOICE=null; w.remove(); advance(); };
+    w.appendChild(n);
+    st.appendChild(w); st.scrollTop=st.scrollHeight;
+    return;
+  }
+  pool.forEach((id,i)=>{
+    const c=CHARS[id];
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">'+(i+1)+'.</span> <span style="color:'+c.color+'">'+c.name+
+      '</span> — '+c.style+'<small>'+c.blurb+' ◆ '+(c.sig||[]).join(' · ')+'</small>';
+    btn.onclick=()=>{
+      beep('coin');
+      if(NET.role==='client'){ NET.send({t:'pick', idx:i}); return; }
+      NET.CHOICE=null;
+      w.remove();
+      joinChar(id);
+      if(b.say) addDialogue({who:c.name, pid:id, text:b.say});
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+}
+
+function endOfScene(sc){
+  let nxt=null;
+  if(typeof sc.next==='function'){ try{ nxt=sc.next(G); }catch(e){} }
+  else if(typeof sc.next==='string') nxt=sc.next;
+  gotoScene(nxt||'hub');
+}
+
+function addKicker(x){
+  if(NET.role==='host'&&NET.started) NET.beat({t:'k', x});
+  const st=$('stage');
+  const d=document.createElement('div');
+  d.className='beat kicker'; d.textContent=x;
+  st.appendChild(d);
+}
+
+/* retire older beats so stale dialogue lines can't advance the story */
+function retireBeats(){
+  const ch=$('stage').children;
+  for(let i=0;i<ch.length;i++){
+    const el=ch[i];
+    if(el.classList && el.classList.contains('dline')) el.onclick=null;
+    if(el.classList && el.classList.contains('adv')) el.remove();
+  }
+}
+
+function addDialogue(b){
+  if(NET.role==='host'&&NET.started)
+    NET.beat({t:'say', who:b.who, pid:b.pid||null, text:b.text, silh:!!b.silh});
+  retireBeats();
+  const st=$('stage');
+  const d=document.createElement('div'); d.className='dline';
+  d.appendChild(sayPortrait(b.pid, (b.who==='YOU')||(G&&b.pid===G.pc)||(NET.role==='client'&&b.pid===NET.selfPc)));
+  const body=document.createElement('div'); body.className='dbody';
+  const who=document.createElement('div'); who.className='dwho';
+  who.textContent=(b.silh?'📢 ':'')+b.who;
+  body.appendChild(who);
+  const txt=document.createElement('div'); txt.className='dtext';
+  txt.innerHTML=b.text;
+  body.appendChild(txt);
+  d.appendChild(body);
+  d.onclick=()=>{ beep('tick'); NET.uiSkip(); };
+  st.appendChild(d);
+  const a=document.createElement('div'); a.className='adv'; a.textContent='─ CLICK / SPACE ─';
+  st.appendChild(a);
+  st.scrollTop=st.scrollHeight;
+}
+
+function joinChar(id){
+  const ch=CHARS[id]; if(!ch || G.party.includes(id) || G.bench.includes(id)) return;
+  try{ (window.__joinLog=window.__joinLog||[]).push(id+'@party'+G.party.length+
+    ' seats='+JSON.stringify(G.mpSeats||[])+' swmax='+maxStats(id).maxhp); }catch(e){}
+  const mp=(NET.role==='host'&&NET.started);
+  if(G.party.length<4){
+    G.party.push(id);
+  }else if(mp){
+    /* multiplayer: seats fill two of the four slots, so strong recruits
+       overflow to the bench early. Auto-win the trade for the crew: bench
+       the weakest NON-seat member if the newcomer out-halves them.
+       (Solo keeps its original fill order — this branch never runs there.) */
+    const seats=G.mpSeats||[];
+    let weakIdx=-1, weakHp=Infinity;
+    G.party.forEach((pid,i)=>{
+      if(seats.includes(pid)) return;
+      const mh=maxStats(pid).maxhp;
+      if(mh<weakHp){ weakHp=mh; weakIdx=i; }
+    });
+    if(weakIdx>=0 && maxStats(id).maxhp>weakHp){
+      const outId=G.party[weakIdx];
+      G.bench.push(outId);
+      G.party[weakIdx]=id;
+      try{ window.__joinLog.push('SWAP '+id+' in, '+outId+' out'); }catch(e){}
+      toast('⇄ ROSTER SWING: '+ch.name+' suits up, '+CHARS[outId].name+' warms the bench (host can reshuffle)','intel');
+    }else{
+      G.bench.push(id);
+      try{ window.__joinLog.push('NO-SWAP '+id+' to bench (weakHp='+weakHp+')'); }catch(e){}
+    }
+  }else G.bench.push(id);
+  ensurePartyStats();  /* seed fresh hp/mp for the newcomer */
+  log('JOINED: '+ch.name);
+  toast('＋ '+ch.name+' joins','intel'); beep('coin');
+  renderHUD(); save(true);
+}
+
+function addChoice(b){
+  retireBeats();
+  const st=$('stage');
+  document.querySelectorAll('#stage .adv').forEach(e=>e.remove());
+  /* multiplayer: record the open choice so any player's click resolves it */
+  if(NET.role==='host'&&NET.started){
+    NET.CHOICE={kind:'choice', b, open:true};
+    NET.beat({t:'choice', prompt:b.prompt,
+      options:b.options.map(o=>({x:o.x, note:o.note||''}))});
+  }
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+b.prompt;
+  w.appendChild(pr);
+  b.options.forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">'+(i+1)+'.</span> '+o.x+(o.note?'<small>'+o.note+'</small>':'');
+    btn.onclick=()=>{
+      beep('tick');
+      if(NET.role==='client'){ NET.send({t:'pick', idx:i}); return; }
+      NET.CHOICE=null;
+      w.remove();
+      NET.execChoice(o);
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+}
+
+/* — battle engine (P2) — */
+/* ============================================================
+   BATTLE ENGINE (P2) — turn-based, AGI order, statuses, AI scripts.
+   Numbers live in STATBASE/ENEMY_STATS/ENEMY_AI/FOE_MOVES/SKILL_FX/TUNING.
+   ============================================================ */
+
+function ensurePartyStats(){
+  if(!G.st) G.st={};
+  const all=G.party.concat(G.bench);
+  all.forEach(id=>{
+    if(!G.st[id]){
+      const m=maxStats(id);
+      G.st[id]={hp:m.maxhp, mp:m.maxmp};
+    }
+  });
+}
+function charLevel(){
+  let n=0; for(const k in G.mile) if(G.mile[k]) n++;
+  return Math.max(1,n);
+}
+function maxStats(id){
+  const b=STATBASE[id]||STATBASE.butler, lv=charLevel();
+  return {
+    maxhp: Math.round(b.hp*(1+TUNING.charLvlHP*(lv-1))),
+    maxmp: Math.round(b.mp*(1+TUNING.charLvlMP*(lv-1))),
+    atk: Math.round(b.atk*(1+TUNING.charLvlATK*(lv-1))),
+    def: Math.round(b.def*(1+TUNING.charLvlDEF*(lv-1))),
+    agi: b.agi
+  };
+}
+function charKit(id){
+  const lv=charLevel(), kit=KITS[id]||[];
+  const own=kit.slice(0, Math.min(kit.length, 1+Math.ceil(lv/2)));
+  /* shared policy spells: learned at the Fiscal Mandate, incl. THE ACCORD */
+  const shared= hasF('accord_unlocked')? ['budget_leak','fiscal_mult','hedge_all','accord'] : [];
+  return own.concat(shared).filter(k=>SKILLS[k]).map(k=>{
+    const s=SKILLS[k];
+    return {...s, id:k, name:s.n, cost:s.mp};   /* menu/SKILL_FX read these */
+  });
+}
+
+/* --- statuses --- */
+function addStatus(u,st){
+  u.statuses.push({k:st.k, t:st.t||(TUNING.buffTurns), v:st.v||0, name:st.name||st.k});
+}
+function hasStatus(u,k){ return u.statuses.some(s=>s.k===k); }
+function eff(u){
+  let atk=u.atk, def=u.def, agi=u.agi;
+  u.statuses.forEach(s=>{
+    if(s.k==='atkdown') atk-=s.v||0;
+    if(s.k==='atkbuff') atk+=s.v||0;
+    if(s.k==='defbuff') def+=s.v||0;
+    if(s.k==='agibuff') agi+=s.v||0;
+    if(s.k==='shaken') atk*=TUNING.shakenAtk;
+  });
+  return {atk:Math.max(1,Math.round(atk)), def:Math.max(0,Math.round(def)), agi};
+}
+function rollVar(){ return 1-TUNING.dmgVar+Math.random()*2*TUNING.dmgVar; }
+function rollDamage(actor,target,pw){
+  const a=eff(actor), d=eff(target);
+  const crit=Math.random()<TUNING.critChance;
+  let v=(a.atk*(pw||1)*rollVar()) - d.def*TUNING.defCoef;
+  v=Math.max(1, Math.round(v*(crit? TUNING.critMult:1)));
+  return {v, crit};
+}
+function healUnit(u,amt){
+  const before=u.hp;
+  u.hp=Math.min(u.maxhp, u.hp+amt);
+  return u.hp-before;
+}
+
+/* --- unit factory --- */
+function mkPartyUnit(id){
+  const m=maxStats(id), stcha=G.st[id]||{hp:m.maxhp, mp:m.maxmp}, c=CHARS[id];
+  return {
+    side:'party', id, name:c.name, color:c.color, emoji:c.face||'☏',
+    hp:Math.max(TUNING.koAfterBattle, stcha.hp), mp:Math.max(0,stcha.mp),
+    maxhp:m.maxhp, maxmp:m.maxmp, atk:m.atk, def:m.def, agi:m.agi,
+    down: stcha.hp<=0, statuses:[], kit:charKit(id) /* array of skill ids */
+  };
+}
+function mkFoeUnit(eid,i,n){
+  const g=ENEMIES[eid]||{}, s=ENEMY_STATS[eid]||{}, lv=Math.max(1,G.phase-1);
+  const bug=BF_BUG||1;   /* planted bug: foe ATK −25% for this battle */
+  /* P6 operative fatigue: each prior retreat from this site wears the same
+     garrison down — the committee's attention span applies to henchmen too.
+     ATK-only relief, capped. Escapable spirals, cheaper retries. */
+  const fat=Math.min(TUNING.fatigue.max, (G.fatigue&&G.fatigue[eid])||0);
+  const fa=1 - fat*TUNING.fatigue.atk;
+  const dh=DIFFS[G.diff]||DIFFS.st;   /* P6: title-screen difficulty rides the same choke point */
+  const sc=(x,base)=>x!==undefined? Math.round(base*(1+TUNING.ratchet.hp*lv)*ECON.enc()*bug*dh.foe) : base;
+  return {
+    side:'foe', eid, tag:(n>1? ' '+String.fromCharCode(65+i):''),
+    name:(g.name||eid)+(n>1? String.fromCharCode(65+i):''),
+    emoji:g.emoji||'♟', hp:sc(s.hp,s.hp||30), maxhp:sc(s.hp,s.hp||30),
+    mp:s.mp||0, maxmp:s.mp||0, atk:Math.max(1,Math.round(sc(s.atk,s.atk||10)*fa)), def:s.def||6, agi:s.agi||8,
+    boss:!!g.boss, statuses:[], summoned:false
+  };
+  /* note: bug hits HP too — a body-affecting wiretap. Cheap sabotage.
+     (If you'd rather only ATK bend, change sc() usage for hp to drop *bug.) */
+}
+
+/* --- the battle object --- */
+let BATTLE=null;
+function beginBattle(b, box){
+  ensurePartyStats();  const n=Math.min(Math.max((ENEMIES[b.id]&&(ENEMIES[b.id].count))||1,1),5);
+  const foes=Array.from({length:n},(_,i)=>mkFoeUnit(b.id,i,n));
+  const team=G.party.map(mkPartyUnit).filter(Boolean);
+  BATTLE={
+    b, team, foes, round:0, q:[], qi:0, log:[], over:false, win:false,
+    rewards: b.reward||{}, reveal:false, summoned:0, box
+  };
+  /* qi starts at −1: nextTurn() advances first, so q[0] (highest AGI) acts */
+  BATTLE.q=[...team,...foes].sort((a,z)=>eff(z).agi-eff(a).agi);
+  BATTLE.qi=-1;
+  /* Bullock phase two: Yield Curve Control — every skill costs +1 MP */
+  BATTLE.ycc=(b.id==='bullock_p2');
+  if(BATTLE.ycc) battleBeat('YIELD CURVE CONTROL — the curve is pinned. All skills cost +1 MP this fight.');
+  if(BF_DOSSIER){ BATTLE.reveal=true; BF_DOSSIER=false; battleBeat('DOSSIER OPEN — statlines on record.'); }
+  if(MOOD_OPEN){ battleBeat(MOOD_OPEN); MOOD_OPEN=null; }
+  /* cortisol pre-fight: Shaken start at threshold */
+  if(G.cort>=CORT.shaken) team.forEach(u=>{ if(!u.down) addStatus(u,{k:'shaken', t:99, name:'SHAKEN'}); });
+  BATTLE.boss=foes.some(f=>f.boss);
+  cueCrew(BATTLE.boss? 'boss':'fight');   /* P6 audio kit: battle-start cue, host + crew */
+  renderBattle();
+  battleBeat('⚔ '+((ENEMIES[b.id]||{}).name||'HOSTILES')+' — a turn-based fight begins.\n'+((ENEMIES[b.id]||{}).line||''));
+  if(Math.min(TUNING.fatigue.max, (G.fatigue&&G.fatigue[b.id])||0) > 0){
+    const fat=Math.min(TUNING.fatigue.max, (G.fatigue&&G.fatigue[b.id])||0);
+    battleBeat('⚑ RETURN VISIT — this garrison has repelled the committee ×'+fat+
+      '. Its enthusiasm is down '+Math.round(fat*TUNING.fatigue.atk*100)+'% (ATK).');
+  }
+  nextTurn();
+}
+function battleBeat(msg){
+  if(BATTLE) { BATTLE.log.push(msg); if(BATTLE.log.length>60) BATTLE.log.shift(); }
+  renderBattle();
+  /* crew: battle mutations (drains, weeds, cash shakedowns) sync here too */
+  NET.syncG();
+}
+function renderBattle(){
+  const w=BATTLE&&BATTLE.box;
+  if(!w) return;
+  let html='';
+  if(BATTLE.boss) html+='<div class="bossbar">⚑ BOSS FIGHT — '+((ENEMIES[BATTLE.b.id]||{}).name||'')+'</div>';
+  BATTLE.foes.forEach(f=>{
+    const pct=Math.max(0,Math.min(100,Math.round(100*f.hp/f.maxhp)));
+    html+='<div class="enemyrow'+(f.down?' down':'')+'">'+
+      f.emoji+' '+f.name+
+      '<div class="bar"><i style="width:'+pct+'%;background:'+(pct<40?'var(--red)':'var(--ok)')+'"></i></div>'+
+      '<span class="hp" style="color:'+(pct<40?'var(--red)':'var(--ok)')+'">'+
+      (BATTLE.reveal? 'HP '+f.hp+'/'+f.maxhp : 'HP '+pct+'%')+
+      (hasStatus(f,'wound')?' · BLEEDING':'')+ (hasStatus(f,'charmed')?' · CHARMED':'')+
+      (hasStatus(f,'skip')?' · NO QUORUM':'')+'</span></div>';
+  });
+  html+='<div class="logfine" style="margin-top:6px">'+
+    BATTLE.team.map(u=>(u.down?'<s>':'')+u.name+' '+u.hp+'/'+u.maxhp+' · MP '+u.mp+
+      (u.statuses.length? ' ['+u.statuses.map(s=>s.name).join(',')+']':'')+
+      (u.down?'</s>':'')).join(' · ')+'</div>';
+  const lines=BATTLE.log.slice(-6);
+  html+='<div class="logfine" style="white-space:pre-line">'+lines.map((l,i)=>
+    (i===lines.length-1&&l? '<span class="lognew">'+l+'</span>': l)).join('\n')+'</div>';
+  w.innerHTML=html;
+  /* multiplayer: sync the fight panel to the crew */
+  if(NET.role==='host'&&NET.started) NET.syncBox(html);
+}
+
+/* --- damage application --- */
+function hitFoe(f,amt,crit,who){
+  f.hp-=amt;
+  battleBeat((who||'')+' → '+f.name+' takes '+amt+(crit?' (CRIT!)':''));
+  if(f.hp<=0){ f.hp=0; f.down=true; battleBeat(f.name+' is dealt with.'); }
+}
+function hitParty(u,amt,who){
+  if(hasStatus(u,'evasion') && Math.random()<(u.statuses.find(s=>s.k==='evasion').v/100)){
+    battleBeat(u.name+' sidesteps entirely (paperwork excuse).'); return;
+  }
+  u.hp-=amt;
+  battleBeat((who||'')+' hits '+u.name+' for '+amt);
+  if(u.hp<=0){ u.hp=0; u.down=true;
+    if(!BATTLE._koCued){ BATTLE._koCued=true; cueCrew('ko'); }   /* P6: one thud per fight, first casualty */
+    battleBeat(u.name+' is out of the meeting.'); }
+}
+function alive(u){ return !u.down; }
+function teamAlive(){ return BATTLE.team.filter(alive); }
+function foesAlive(){ return BATTLE.foes.filter(alive); }
+function pickFoeTarget(){
+  const locked=BATTLE.team.find(u=>alive(u)&&hasStatus(u,'taunt'));
+  if(locked) return locked;
+  const pool=teamAlive();
+  return pool.sort((a,z)=>a.hp/a.maxhp - z.hp/z.maxhp)[0];
+}
+function hitFoeDot(f,s){
+  if(f.down) return;
+  f.hp-=s.v;
+  battleBeat(f.name+' bleeds '+s.v+' (stuck holding the bag).');
+  if(f.hp<=0){ f.hp=0; f.down=true; battleBeat(f.name+' is dealt with.'); }
+}
+
+/* --- skill fx dispatch (shared by party skills and foe moves) --- */
+function applyFx(actor, target, def, label){
+  const fx=def.fx, pw=def.pw||0;
+  const foes=foesAlive(), team=teamAlive();
+  const dmgTo=(t,p)=>{
+    const {v,crit}=rollDamage(actor,t,p); hitFoe(t,v,crit,actor.name);
+  };
+  switch(fx){
+    case 'dmg': dmgTo(target, pw*(def.crit&&Math.random()<def.crit? TUNING.critMult:1)); break;
+    case 'dmgAll': foes.forEach(f=>{ if(!f.down) dmgTo(f,pw); }); break;
+    case 'partyheal': team.forEach(t=>{ const h=healUnit(t,pw); if(h) battleBeat(t.name+' recovers '+h+' HP.'); }); break;
+    case 'heal': { const h=healUnit(actor,pw); if(h) battleBeat(actor.name+' patches up '+h+' HP.'); break; }
+    case 'bigheal': { const h=healUnit(actor,pw); if(h) battleBeat(actor.name+' goes full service: +'+h+' HP.'); break; }
+    case 'revive': { const d=BATTLE.team.find(u=>u.down);
+      if(d){ d.down=false; d.hp=Math.round(d.maxhp*pw); battleBeat(d.name+' is back at the table.'); }
+      else battleBeat('Nobody to revive — the roster is intact.'); break; }
+    case 'cleanse': case 'partyclean': team.forEach(t=>{ t.statuses=[]; });
+      battleBeat('Party statuses swept under the rug (cleansing).'); break;
+    /* — buffs — */
+    case 'defbuff': addStatus(actor,{k:'defbuff', v:pw, name:'DEF+'}); battleBeat(actor.name+' raises DEF by '+pw+'.'); break;
+    case 'atkbuff': addStatus(actor,{k:'atkbuff', v:pw, name:'ATK+'}); battleBeat(actor.name+' raises ATK by '+pw+'.'); break;
+    case 'atkbuffAll': team.forEach(t=>addStatus(t,{k:'atkbuff', v:pw, name:'ATK+'})); battleBeat('Party ATK +'+pw+'.'); break;
+    case 'agibuff': team.forEach(t=>addStatus(t,{k:'agibuff', v:pw, name:'AGI+'})); battleBeat('Party gets jumpy (AGI +'+pw+').'); break;
+    case 'regen': team.forEach(t=>addStatus(t,{k:'regen', v:pw, t:TUNING.buffTurns, name:'REGEN'}));
+      battleBeat('Steady recovery booked for the whole party.'); break;
+    case 'evasion': team.forEach(t=>addStatus(t,{k:'evasion', v:pw, name:'EVADE'})); battleBeat('Party pre-books plausible deniability.'); break;
+    case 'taunt': addStatus(actor,{k:'taunt', t:2, name:'AGGRO'}); battleBeat(actor.name+' absorbs attention (all eyes here).'); break;
+    /* — debuffs — */
+    case 'atkdown': if(!target.down){ addStatus(target,{k:'atkdown', v:pw, name:'ATK−'}); battleBeat(target.name+' loses '+pw+' ATK.'); } break;
+    case 'massdown': foes.forEach(f=>{ if(!f.down){ addStatus(f,{k:'atkdown', v:pw, name:'ATK−'}); } }); battleBeat('All hostiles hit with ATK−'+pw+'.'); break;
+    case 'dot': if(!target.down){ addStatus(target,{k:'wound', v:pw, t:4, name:'BLEED'}); battleBeat(target.name+' will bleed '+pw+'/turn.'); } break;
+    case 'skipfoe': if(!target.down){ addStatus(target,{k:'skip', t:2, name:'NO QUORUM'}); battleBeat(target.name+' is Red-Taped into inaction.'); } break;
+    case 'skipfoeAll': foes.forEach(f=>{ if(!f.down){ addStatus(f,{k:'skip', t:2, name:'NO QUORUM'}); } });
+      battleBeat('The whole other side is Red-Taped.'); break;
+    case 'charm': if(!target.down){ addStatus(target,{k:'charmed', t:2, name:'CHARMED'}); battleBeat(target.name+' is charmed — someone else’s agenda now.'); } break;
+    case 'confuse': if(!target.down){ addStatus(target,{k:'skip', t:2, name:'CONFUSED'}); battleBeat(target.name+' loses the plot.'); } break;
+    case 'reveal': BATTLE.reveal=true; battleBeat('The dossier is open — statlines exposed.'); break;
+    case 'cort': G.cort=Math.max(0,Math.min(9,G.cort+pw)); battleBeat('Cortisol '+(pw>0?'+':'')+pw+'.'); renderHUD(); break;
+    case 'wildcard': {
+      const roll=DICE_TABLE[Math.floor(Math.random()*DICE_TABLE.length)];
+      battleBeat('🎲 '+roll.label+'!'); applyFx(actor, target, roll, roll.label); break; }
+    case 'accord': team.forEach(t=>{ t.down=false; t.hp=t.maxhp; t.mp=t.maxmp; });
+      foes.forEach(f=>{ if(!f.down){ f.hp=Math.round(f.hp*0.45); if(f.hp<=0)f.down=true; } });
+      battleBeat('*THE ACCORD* — the mandates align. Party restored, hostiles staggered.'); break;
+    default: battleBeat(label+' (no git-blameable effect).');
+  }
+}
+
+/* --- foe AI turn --- */
+function foeTurn(f){
+  if(f.down) return;
+  if(hasStatus(f,'skip')){ battleBeat(f.name+' stands around being Red-Taped.'); return; }
+  if(hasStatus(f,'charmed')){ battleBeat(f.name+' doodles approvingly and passes.'); return; }
+  const ai=ENEMY_AI[f.eid]||{};
+  /* boss summon once below hp threshold */
+  if(ai.summon && !f.summoned && f.hp/f.maxhp < ai.summon.frac){
+    f.summoned=true;
+    const minion=mkFoeUnit(ai.summon.id, f.tag? 1:0, 1);
+    BATTLE.foes.push(minion);
+    battleBeat('⚑ '+f.name+' calls for backup: '+minion.name+' arrives.');
+    BATTLE.q.push(minion);
+    return;
+  }
+  const script=(ai.moves||[{skill:'heavy'}]).filter(m=>!(m.every&&BATTLE.round%m.every!==0));
+  if(!script.length) return;
+  const mv=script[Math.floor(Math.random()*script.length)];
+  const move=FOE_MOVES[mv.skill]||FOE_MOVES.heavy;
+  const a=eff(f);
+  const vsParty=(t,p)=>hitParty(t, Math.max(1, Math.round(a.atk*p*rollVar() - eff(t).def*TUNING.defCoef)), f.name);
+  /* Bullock signature: lifts party cash mid-fight and spends it on herself */
+  if(mv.skill==='cashrate'){
+    const t=pickFoeTarget();
+    vsParty(t, move.pw);
+    const drain=Math.min(G.cash||0, 15);
+    if(drain>0){ G.cash-=drain; f.atk+=1; renderHUD(); }
+    battleBeat('CASH RATE HIKE — '+t.name+' takes the hit'+(drain>0?
+      ' and she lifts $'+drain+' straight off the table (ATK raised).':' (no cash left to lift).'));
+    return;
+  }
+  if(move.status==='audited'){
+    const t=pickFoeTarget();
+    vsParty(t, move.pw);
+    addStatus(t,{k:'skip', t:1, name:'AUDITED'});
+    battleBeat(t.name+' is AUDITED — loses a turn.');
+  } else if(move.status==='shaken'){
+    teamAlive().slice().forEach(t=>vsParty(t, move.pw));
+    teamAlive().forEach(t=>addStatus(t,{k:'shaken', t:2, name:'SHAKEN'}));
+    battleBeat('The room is shaken.');
+  } else if(move.aoe){
+    teamAlive().slice().forEach(t=>vsParty(t, move.pw));
+  } else {
+    vsParty(pickFoeTarget(), move.pw);
+  }
+}
+
+/* --- party turn menus ---
+   Menus are built once as data (menuOpen) and resolved once (menuDo), so the
+   same flow serves solo play, the host, and remote players' clients via
+   broadcast payloads. */
+let MENU_SEQ=0;
+function menuOpen(kind,u,prompt,opts){
+  retireBeats();
+  MENU_SEQ++;
+  NET.MENU={kind, uid:u.id, seq:MENU_SEQ, fns:opts.map(o=>o.fn), u};
+  /* broadcast first so remote players can act while the host renders */
+  if(NET.role==='host'&&NET.started)
+    NET.bcast({t:'menu', seq:MENU_SEQ, kind, uid:u.id, prompt,
+      opts:opts.map(o=>({k0:o.k0, x:o.x, sub:o.sub||'', dis:!!o.dis, mpc:o.mpc, rhp:o.rhp||''}))});
+  const st=$('stage');
+  /* whose move is this? remote player units show a waiter line on the host,
+     and non-owner clients get a waiter line from recv(). */
+  const owner=(NET.role==='host'&&NET.started)? NET.ownerOf(u.id): null;
+  const mine=!owner || !owner.conn;   /* host keeps control of NPCs + own PC */
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  if(!mine){
+    pr.textContent='⏳ '+(owner? owner.name: '')+' is deciding their move…';
+    w.appendChild(pr); st.appendChild(w); st.scrollTop=st.scrollHeight; return;
+  }
+  pr.textContent=prompt; w.appendChild(pr);
+  opts.forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    if(o.dis) btn.disabled=true;
+    btn.innerHTML='<span class="k">'+o.k0+'</span> '+o.x+
+      (o.mpc!=null? ' <span class="hp">MP '+o.mpc+'</span>':'')+
+      (o.rhp? ' <span class="hp">HP '+o.rhp+'</span>':'')+
+      (o.sub? '<small>'+o.sub+'</small>':'');
+    btn.onclick=()=>{
+      if(o.dis){ toast('NOT ENOUGH MP'+(BATTLE&&BATTLE.ycc? ' (curve is pinned: +1)':''),'bad'); beep('bad'); return; }
+      beep(o.b||'tick');
+      if(NET.role==='client'){ NET.send({t:'menuPick', seq:MENU_SEQ, idx:i}); return; }
+      w.remove(); menuDo(kind,u,i);
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+}
+function menuDo(kind,u,i){
+  const ctx=NET.MENU;
+  if(!ctx || ctx.kind!==kind || ctx.uid!==u.id) return;   /* stale click */
+  NET.MENU=null;
+  const fn=ctx.fns[i];
+  if(fn) fn();
+}
+function partyTurn(u){
+  retireBeats();
+  const opts=[
+    {k0:'1.', x:'Attack', fn:()=>menuTarget(u)},
+  ];
+  if(u.kit.length){
+    /* P6 UX: an actor whose MP is below the whole kit sees Skill pre-greyed
+       (mirrors menuSkill's cost logic incl. Bullock's +1 YCC) instead of
+       opening a menu where every line is struck through. Text unchanged. */
+    const afford=u.kit.some(sk=>(sk.cost||0)+(BATTLE&&BATTLE.ycc? 1:0)<=u.mp);
+    opts.push({k0:(opts.length+1)+'.', x:'Skill', dis:!afford,
+      sub:!afford? 'no affordable skills':undefined, fn:()=>menuSkill(u)});
+  }
+  if(Object.values(G.items||{}).some(c=>c>0)) opts.push({k0:(opts.length+1)+'.', x:'Item', fn:()=>menuItem(u)});
+  opts.push({k0:(opts.length+1)+'.', x:'Defend — brace, halve next hit', fn:()=>{
+    addStatus(u,{k:'defbuff', v:Math.round(u.def*0.5+2), t:1, name:'BRACED'});
+    battleBeat(u.name+' braces.'); nextTurn();
+  }});
+  opts.push({k0:(opts.length+1)+'.', x:'Flake out — burn 1🛈 for a free pass', fn:()=>{
+    if(G.intel>0){ G.intel--; battleBeat(u.name+' outsources this turn to a contractor.'); renderHUD(); }
+    else battleBeat('No intel left to burn. The contractor ghosts.');
+    nextTurn();
+  }});
+  menuOpen('party', u, '⚔ '+u.name+': HP '+u.hp+'/'+u.maxhp+' · MP '+u.mp+' — your move:', opts);
+}function menuTarget(u,useSkill){
+  const foes=BATTLE.foes.filter(f=>!f.down);
+  const opts=foes.map(f=>({k0:'▸', x:f.emoji+' '+f.name,
+    rhp:(BATTLE.reveal? f.hp+'/'+f.maxhp:''),
+    fn:()=>{
+      beep('hit');
+      if(useSkill){ castSkill(u, useSkill, f); }
+      else { const {v,crit}=rollDamage(u,f,1); hitFoe(f,v,crit,u.name); nextTurn(); }
+    }}));
+  if(useSkill){
+    opts.push({k0:'←', x:'Back — rethink this holiday', fn:()=>partyTurn(u)});
+  }
+  menuOpen('target', u, (useSkill? SKILLS[useSkill].name: 'Attack')+' → target?', opts);
+}
+function menuSkill(u){
+  const opts=u.kit.map(sk=>{
+    const c=(sk.cost||0)+(BATTLE && BATTLE.ycc? 1:0);
+    const sfx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
+    /* ♥ marks heal/revive skills — read by QA pilots and human eyes alike */
+    return {k0:(/heal|revive/.test(sfx.fx)? '♥':'▸'), x:sk.name, mpc:c, sub:(sk.d||''), dis:(u.mp<c),
+      fn:()=>{
+        if(u.mp<c){ toast('NOT ENOUGH MP'+(BATTLE&&BATTLE.ycc? ' (curve is pinned: +1)':''),'bad'); return; }
+        beep('intel'); u.mp-=c;
+        if(['dmg','atkdown','dot','skipfoe','charm','confuse'].includes(sfx.fx)){
+          menuTarget(u, sk.id);
+        } else {
+          battleBeat(u.name+' uses '+sk.name+'!');
+          applyFx(u, pickFoeTarget(), sfx, sk.name); nextTurn();
+        }
+      }};
+  });
+  opts.push({k0:'←', x:'Back — the MP ledger caught us', fn:()=>partyTurn(u)});
+  menuOpen('skill', u, '⚔ '+u.name+' — which skill?', opts);
+}
+function castSkill(u, skid, target){
+  const s=SKILLS[skid]; if(!s) return;
+  const sk={...s, id:skid, name:s.n, cost:s.mp};
+  const fx=SKILL_FX[sk.id]||{fx:'dmg', pw:1};
+  battleBeat(u.name+' uses '+sk.name+'!');
+  applyFx(u, target, fx, sk.name);
+  nextTurn();
+}
+function menuItem(u){
+  const opts=Object.entries(G.items||{}).filter(([,c])=>c>0).map(([iid])=>{
+    const it=ITEMS[iid]; if(!it) return null;
+    return {k0:'▸', x:(it.emoji||'')+' '+it.name+' ×'+G.items[iid],
+      sub:it.heal? '+'+it.heal+' HPV'+(it.cleanse? ' · cleanse':''):'',
+      fn:()=>{
+        G.items[iid]--;
+        if(G.items[iid]<=0) delete G.items[iid];
+        const parts=[];
+        if(it.thp){ const h=healUnit(u,it.thp); parts.push('+'+h+' HP'); }
+        if(it.tmp){ u.mp=Math.min(u.maxmp, u.mp+it.tmp); parts.push('+'+it.tmp+' MP'); }
+        if(it.cort){ G.cort=Math.max(0,Math.min(9,G.cort+it.cort));
+          parts.push((it.cort>0?'+':'')+it.cort+' 🔥'); }
+        if(it.tintel && G.cort>=7){ G.intel+=it.tintel; parts.push('+'+it.tintel+' 🛈'); }
+        battleBeat(u.name+' uses '+it.name+' ('+(parts.join(', ')||'intangibles only')+').');
+        beep('coin'); renderHUD(); nextTurn();
+      }};
+  }).filter(Boolean);
+  opts.push({k0:'←', x:'Back — the pockets can wait', fn:()=>partyTurn(u)});
+  menuOpen('item', u, '⚔ '+u.name+' — use which item?', opts);
+}
+/* --- turn queue --- */
+function nextTurn(){
+  renderBattle();
+  NET.syncG();          /* crew: full-state sync at turn boundaries */
+  if(!teamAlive().length){ endBattle(false); return; }
+  if(!foesAlive().length){ endBattle(true); return; }
+  /* advance q to next living unit */
+  let tries=0;
+  do{
+    BATTLE.qi++;
+    if(BATTLE.qi>=BATTLE.q.length){
+      BATTLE.qi=0; BATTLE.round++;
+      /* upkeep all at round rollover */
+      [...BATTLE.foes,...BATTLE.team].forEach(u=>{ if(!u.down) upkeep(u); });
+      if(!foesAlive().length){ endBattle(true); return; }
+      if(!teamAlive().length){ endBattle(false); return; }
+    }
+    tries++;
+  } while(tries<40 && BATTLE.q[BATTLE.qi].down);
+  const cur=BATTLE.q[BATTLE.qi];
+  if(cur.side==='party') partyTurn(cur); else foeTurn(cur), nextTurn();
+}
+function upkeep(u){
+  /* tick statuses at each round rollover */
+  u.statuses.forEach(s=>{ if(s.k==='wound' && u.side==='foe') hitFoeDot(u,s); });
+  u.statuses.forEach(s=>{ if(s.k==='regen') healUnit(u,s.v); });
+  u.statuses=u.statuses.filter(s=> --s.t>0);
+}
+
+/* --- battle end --- */
+function endBattle(win){
+  BATTLE.over=true; BATTLE.win=win;
+  BF_BUG=null; MOOD_OPEN=null;   /* per-battle intel effects expire with the fight */
+  const box=BATTLE.box; if(box) box.innerHTML='';
+  if(NET.role==='host'&&NET.started) NET.bcast({t:'box', html:''});
+  const w=document.createElement('div'); w.className='beat';
+  if(win){
+    const dh=DIFFS[G.diff]||DIFFS.st, r=BATTLE.rewards, rh=Math.round((TUNING.ratchet.reward*Math.max(1,G.phase-1)+1)*100)/100;
+    const cash=Math.round((r.cash||0)*rh*dh.reward), intel=r.intel||0, cort=(r.cort||0);
+    applyEffects({cash, intel, cort, note:'BATTLE WON: '+((ENEMIES[BATTLE.b.id]||{}).name||'')});
+    /* post-battle recovery */
+    BATTLE.team.forEach(u=>{
+      u.hp=Math.max(u.hp, Math.round(u.maxhp*TUNING.postBattleHeal));  /* floored heal */
+      u.mp=Math.min(u.maxmp, u.mp+Math.round(u.maxmp*TUNING.postBattleMP));
+      if(u.down){ u.hp=Math.max(TUNING.koAfterBattle, Math.round(u.maxhp*0.25)); u.down=false; }
+    });
+    persistUnits();
+    if(G.fatigue && G.fatigue[BATTLE.b.id]) delete G.fatigue[BATTLE.b.id];   /* P6: garrison resets on a clean win */
+    w.innerHTML='<div style="color:var(--ok)">✅ SITE SECURED — '+
+      ((ENEMIES[BATTLE.b.id]||{}).name||'HOSTILES')+' stood down.</div>'+
+      '<div class="fine">The party catches its breath: +'+Math.round(TUNING.postBattleHeal*100)+'% HP, +'+
+      Math.round(TUNING.postBattleMP*100)+'% MP. Downed allies rejoin at the medic’s discretion.'+
+      (BATTLE.b.note? '<br>'+BATTLE.b.note:'')+'</div>';
+  } else {
+    /* multiplayer: the committee splits the withdrawal tab (half fee) —
+       two players share one supply budget and must not death-spiral */
+    const split=(NET.role==='host'&&NET.started)? 0.5 : 1;
+    const dh=(DIFFS[G.diff]||DIFFS.st);
+    const loss=Math.round(G.cash*TUNING.lossCashPenalty*split*dh.loss);
+    G.cash-=loss;
+    /* P6 operative fatigue: the same garrison has now repelled the committee
+       once more — the next visit meets a more tired reception (foe ATK −8%,
+       capped). Gated so summonable minions and fresh ids never pre-fatigue. */
+    if(G.fatigue===undefined) G.fatigue={};
+    G.fatigue[BATTLE.b.id]=Math.min(TUNING.fatigue.max, (G.fatigue[BATTLE.b.id]||0)+1);
+    BATTLE.team.forEach(u=>{ u.hp=Math.round(u.maxhp*0.5); u.mp=Math.round(u.maxmp*0.5); u.down=false; });
+    persistUnits();
+    w.innerHTML='<div style="color:var(--red)">🟥 WITHDRAWAL — the site was not held.</div>'+
+      '<div class="fine">No game over — only fees. −$'+loss+' to “consulting”'+(split<1?' (the committee split the tab)':'')+
+      ', and the story continues at the hub. Regroup, restock, and find a better angle. The rival of record will claim they were “basically there”.</div>';
+    log('RETREAT: '+((ENEMIES[BATTLE.b.id]||{}).name||''));
+    NET.syncG();   /* crew: the fee lands before the CONTINUE click */
+  }
+  if(NET.role==='host'&&NET.started)
+    NET.beat({t:'rbeat', html:w.innerHTML, win:!!win});   /* clients play their own cue in recv() */
+  const ok=document.createElement('button'); ok.textContent='CONTINUE';
+  const won=win;
+  const contFn=()=>{
+    if(NET.role==='client'){ NET.send({t:'cont'}); return; }
+    NET.CONT=null;
+    beep(won? 'coin':'bad'); renderHUD(); save(true);
+    if(R.onBattleDone){ const f=R.onBattleDone; R.onBattleDone=null; f(won); }
+    else if(won) advance();
+    else gotoScene('hub');
+  };
+  NET.CONT=contFn;
+  ok.onclick=contFn;
+  w.appendChild(ok);
+  $('stage').appendChild(w); $('stage').scrollTop=$('stage').scrollHeight;
+  BATTLE=null;
+}
+function persistUnits(){
+  ensurePartyStats();
+  BATTLE.team.forEach(u=>{
+    if(u.down) return;
+    G.st[u.id]={hp:u.hp, mp:u.mp};
+  });
+}
+
+/* scene-block battle: real engine with scripted retreat fallback */
+let BF_BUG=null; /* per-battle foe ATK factor from a planted intel bug */
+let BF_DOSSIER=false;
+let MOOD_OPEN=null; /* P3: mood-opening line, spoken at battle start */
+function addBattleStub(b){
+  /* regulator raid: cortisol pegged at the ceiling → ASIC ambush first */
+  if(G.cort>=CORT.raid && !BATTLE && !R.raidPending){
+    log('REGULATOR RAID — cortisol at '+G.cort);
+    R.raidPending=b;
+    const raidB={t:'battle', id:'asic_raid', reward:{cash:0,intel:0,cort:0},
+      note:'Emergency ambush. The regulators keep receipts too.'};
+    const box=document.createElement('div'); box.className='beat';
+    box.style.border='1px solid var(--red)'; box.style.padding='10px'; box.style.margin='8px 0';
+    $('stage').appendChild(box);
+    NET.beat({t:'newbox', red:true});
+    R.onBattleDone=(raidWin)=>{
+      /* raid penalties: regardless of who won the skirmish, the state collects */
+      const loss=Math.round(G.cash*TUNING.raid.cash);
+      G.cash=Math.max(0,G.cash-loss);
+      G.cort=4;
+      toast('🧾 RAID SETTLED: −$'+loss+' · cortisol ventilated to 4','bad');
+      log('RAID settled: −$'+loss+', cort→4');
+      beep('bad'); renderHUD(); save(true);
+      R.onBattleDone=null;
+      addBattleStub(R.raidPending);
+      R.raidPending=null;
+    };
+    beginBattle(raidB, box);
+    return;
+  }
+  const box=document.createElement('div'); box.className='beat';
+  box.style.border='1px solid rgba(255,255,255,.15)'; box.style.padding='10px'; box.style.margin='8px 0';
+  $('stage').appendChild(box);
+  NET.beat({t:'newbox', red:false});
+  /* intel ops consumption + mood openings land here */
+  if(hasF('bugNext')){ G.flags.bugNext=false; BF_BUG=0.75; }
+  if(hasF('dossierNext')){ G.flags.dossierNext=false; BF_DOSSIER=true; }
+  const open=MOOD_MODS[G.mood].open||{};
+  if(Object.keys(open).length){
+    applyEffects({cash:open.cash||0, intel:open.intel||0, cort:open.cort||0});
+    MOOD_OPEN='MARKET '+G.mood+' OPEN: '+
+      Object.entries(open).map(([k,v])=>({cash:'+$'+v, intel:'+'+v+'🛈', cort:'+'+v+'🔥'}[k])+' '+k).join(', ');
+  }
+  beginBattle(b, box);
+}
+/* scripted battle runner (dev/harness): acts[] may use 'attack' (target auto:
+   lowest-HP% foe), ['skill', skillId] or 'skill:<id>' (target auto),
+   'item:<id>', 'defend' */
+function testBattle(partyIds, eid, acts){
+  const savedParty=G.party.slice(), savedScene=R.scene;
+  G.party=partyIds.slice();
+  ensurePartyStats();
+  const fakeScene={...SCENES['hub']}, fakeBlock={t:'battle', id:eid, reward:{}};
+  G.party.forEach(id=>{ if(!G.st[id]){ const m=maxStats(id); G.st[id]={hp:m.maxhp, mp:m.maxmp}; } });
+  const n=Math.min(Math.max((ENEMIES[eid]&&(ENEMIES[eid].count))||1,1),5);
+  const foes=Array.from({length:n},(_,i)=>mkFoeUnit(eid,i,n));
+  const team=G.party.map(mkPartyUnit);
+  let q=[...team,...foes].sort((a,z)=>eff(z).agi-eff(a).agi);
+  let qi=-1, round=0, out=[], turn=0, win=null, guard=0;
+  const clog=m=>out.push(m);
+  const aliveA=()=>team.filter(u=>!u.down), aliveF=()=>foes.filter(f=>!f.down);
+  const stat=(u,s)=>u.statuses.some(x=>x.k===s);
+  const add=(u,s)=>u.statuses.push({...s});
+  const tickUp=()=>{ [...foes,...team].forEach(u=>{ if(!u.down){
+    u.statuses=u.statuses.filter(s=>{ if(s.k==='regen') healU(u,  s.v||0, u.maxhp); return --s.t>0; }); } }); };
+  const healU=(u,v,mx)=>{ u.hp=Math.min(mx||u.maxhp, u.hp+v); };
+  const dmgF=(f,v,c,who)=>{ f.hp-=v; clog((who||'?')+' → '+f.name+' '+v+(c?' CRIT':''));
+    if(f.hp<=0){ f.hp=0; f.down=true; clog(f.name+' down'); } };
+  const dmgP=(u,v,who)=>{ u.hp-=v; clog((who||'?')+' hits '+u.name+' '+v);
+    if(u.hp<=0){ u.hp=0; u.down=true; clog(u.name+' KO'); } };
+  const rollD=(a,tm,pw)=>{ const e=eff2(a), d2=eff2(tm);
+    const crit=Math.random()<TUNING.critChance;
+    return { v:Math.max(1,Math.round(e.atk*(pw||1)*rollVar()-d2.def*TUNING.defCoef)), crit }; };
+  function eff2(u){ let atk=u.atk, def=u.def, agi=u.agi;
+    u.statuses.forEach(s=>{ if(s.k==='atkdown')atk-=s.v||0; if(s.k==='atkbuff')atk+=s.v||0;
+      if(s.k==='defbuff')def+=s.v||0; if(s.k==='agibuff')agi+=s.v||0; if(s.k==='shaken')atk*=TUNING.shakenAtk; });
+    return {atk:Math.max(1,atk|0),def:Math.max(0,def|0),agi}; }
+  while(guard++<500){
+    qi++;
+    if(qi>=q.length){ qi=0; round++; tickUp(); }
+    if(!aliveA().length){ win=false; break; }
+    if(!aliveF().length){ win=true; break; }
+    const cur=q[qi]; if(cur.down) continue;
+    if(cur.side==='foe'){
+      if(stat(cur,'skip')||stat(cur,'charmed')){ clog(cur.name+' skips'); continue; }
+      const ai=ENEMY_AI[cur.eid]||{};
+      if(ai.summon && !cur.summoned && cur.hp/cur.maxhp<ai.summon.frac){
+        cur.summoned=true;
+        const m=mkFoeUnit(ai.summon.id,foes.length,1); foes.push(m); q.push(m);
+        clog('⚑ summon: '+m.name); continue;
+      }
+      const cands=(ai.moves||[{skill:'heavy'}]).filter(m2=>!(m2.every&&round%m2.every!==0));
+      if(!cands.length) continue;
+      const mv=cands[Math.floor(Math.random()*cands.length)];
+      const move=FOE_MOVES[mv.skill]||FOE_MOVES.heavy;
+      const e=eff2(cur);
+      const targets= aliveA().slice().sort((a,z)=>a.hp/a.maxhp-z.hp/z.maxhp);
+      const vsParty=(t,p)=>dmgP(t, Math.max(1, Math.round(e.atk*p*rollVar() - eff2(t).def*TUNING.defCoef)), cur.name);
+      if(move.status==='audited'){ const t=targets[0]; vsParty(t,move.pw); add(t,{k:'skip',t:1}); }
+      else if(move.aoe){ targets.forEach(t=>vsParty(t,move.pw)); }
+      else { vsParty(targets[0],move.pw); }
+    } else {
+      const act=(acts&&acts[turn%acts.length])||'attack'; turn++;
+      if(act==='defend'){ add(cur,{k:'defbuff',v:Math.round(cur.def*0.5+2),t:1}); clog(cur.name+' braces'); }
+      else if(String(act).startsWith('item:')){ const it=ITEMS[act.slice(5)];
+        healU(cur,(it&&it.heal)||15); clog(cur.name+' uses item +'+((it&&it.heal)||15)); }
+      else if(Array.isArray(act) ? act[0]==='skill' : act.startsWith('skill:')){
+        const k=Array.isArray(act)? act[1] : act.slice(6);
+        const s=SKILLS[k];
+        if(!s){ clog('unknown skill'); continue; }
+        const sk={...s, id:k, name:s.n, cost:s.mp};
+        cur.mp=Math.max(0,cur.mp-(sk.cost||0));
+        const t=aliveF().sort((a,z)=>a.hp-a.maxhp)[0]||foes[0];
+        applyFxMock(cur,t,sk,out,rollD,dmgF,add,stat,aliveF,team,foes);
+      }
+      else { const t=aliveF().sort((a,z)=>a.hp/a.maxhp - z.hp/z.maxhp)[0]||foes[0];
+        const {v,crit}=rollD(cur,t,1); dmgF(t,v,crit,cur.name); }
+    }
+  }
+  G.party=savedParty;
+  return {win, turns:turn, log:out.slice(0,40), foesLeft:aliveF().length, teamLeft:aliveA().length};
+}
+/* mock fx runner mirroring applyFx shape without touching the live DOM */
+function applyFxMock(actor,target,sk,out,rollD,dmgF,add,stat,aliveF,team,foes){
+  const fx=SKILL_FX[sk.id]||{fx:'dmg',pw:1}, pw=fx.pw||0;
+  out.push(actor.name+' casts '+sk.name+' ('+fx.fx+')');
+  const F=aliveF();
+  switch(fx.fx){
+    case 'dmg': { if(!target||target.down) target=F[0]; if(target){ const {v,crit}=rollD(actor,target,pw*(fx.crit&&Math.random()<fx.crit? TUNING.critMult:1)); dmgF(target,v,crit,actor.name);} break; }
+    case 'dmgAll': F.forEach(f=>{ const {v,crit}=rollD(actor,f,pw); dmgF(f,v,crit,actor.name); }); break;
+    case 'partyheal': team.forEach(t=>{ if(!t.down){ t.hp=Math.min(t.maxhp,t.hp+pw); out.push(t.name+' +'+pw); } }); break;
+    case 'heal': case 'bigheal': actor.hp=Math.min(actor.maxhp,actor.hp+pw); out.push(actor.name+' +'+pw); break;
+    case 'revive': { const d=team.find(t=>t.down); if(d){ d.down=false; d.hp=Math.round(d.maxhp*pw); out.push(d.name+' revived'); } break; }
+    case 'cleanse': case 'partyclean': team.forEach(t=>t.statuses=[]); out.push('cleansed'); break;
+    case 'defbuff': add(actor,{k:'defbuff',v:pw,t:3}); break;
+    case 'atkbuff': add(actor,{k:'atkbuff',v:pw,t:3}); break;
+    case 'atkbuffAll': team.forEach(t=>add(t,{k:'atkbuff',v:pw,t:3})); break;
+    case 'agibuff': team.forEach(t=>add(t,{k:'agibuff',v:pw,t:3})); break;
+    case 'regen': team.forEach(t=>add(t,{k:'regen',v:pw,t:3})); break;
+    case 'evasion': team.forEach(t=>add(t,{k:'evasion',v:pw,t:3})); break;
+    case 'taunt': add(actor,{k:'taunt',t:2}); break;
+    case 'atkdown': if(target&&!target.down){ add(target,{k:'atkdown',v:pw,t:3}); out.push(target.name+' ATK−'+pw); } break;
+    case 'massdown': F.forEach(f=>add(f,{k:'atkdown',v:pw,t:3})); break;
+    case 'dot': if(target&&!target.down){ add(target,{k:'wound',v:pw,t:4}); out.push(target.name+' BLEED '+pw); } break;
+    case 'skipfoe': if(target&&!target.down){ add(target,{k:'skip',t:2}); } break;
+    case 'skipfoeAll': F.forEach(f=>add(f,{k:'skip',t:2})); break;
+    case 'charm': case 'confuse': if(target&&!target.down){ add(target,{k:'charmed',t:2}); } break;
+    case 'reveal': out.push('dossier open'); break;
+    case 'cort': out.push('cort '+pw); break;
+    case 'wildcard': { const roll=DICE_TABLE[Math.floor(Math.random()*DICE_TABLE.length)];
+      out.push('🎲 '+roll.label);
+      if(roll.fx==='dmg'&&target&&!target.down){ const {v,crit}=rollD(actor,target,roll.pw); dmgF(target,v,crit,'dice'); }
+      if(roll.fx==='partyheal') team.forEach(t=>{ if(!t.down) t.hp=Math.min(t.maxhp,t.hp+roll.pw); });
+      if(roll.fx==='atkbuffAll') team.forEach(t=>add(t,{k:'atkbuff',v:roll.pw,t:3}));
+      if(roll.fx==='evasion') team.forEach(t=>add(t,{k:'evasion',v:roll.pw,t:3}));
+      break; }
+    case 'accord': team.forEach(t=>{ t.down=false; t.hp=t.maxhp; t.mp=t.maxmp; });
+      F.forEach(f=>{ f.hp=Math.round(f.hp*0.45); if(f.hp<=0)f.down=true; }); break;
+  }
+}
+
+
+/* ============================================================
+   UI — stub panels: shop / swap / ops / backrooms (real panels P1+)
+   ============================================================ */
+/* apply a usable item between scenes: heal → lowest-HP active, MP → lowest-MP active,
+   cortisol → global ledger, intel → only reads when the party is on edge */
+function useItem(id){
+  const it=ITEMS[id]; if(!it || !(G.items[id]>0)) return;
+  G.items[id]--; if(G.items[id]<=0) delete G.items[id];
+  const lowestHp=()=> G.party
+    .map(u=>({id:u, gap: maxStats(u).maxhp-(G.st[u]||{hp:0}).hp}))
+    .sort((a,b)=>b.gap-a.gap)[0];
+  const parts=[];
+  if(it.thp){
+    const t=lowestHp();
+    if(t){ const gap=Math.min(it.thp, t.gap);
+      G.st[t.id].hp=Math.min(maxStats(t.id).maxhp, (G.st[t.id]||{hp:0}).hp+gap);
+      parts.push(CHARS[t.id].name+' +'+gap+' HP'); }
+  }
+  if(it.tmp){
+    const t=G.party.slice().sort((a,b)=>((G.st[a]||{mp:0}).mp/maxStats(a).maxmp)-((G.st[b]||{mp:0}).mp/maxStats(b).maxmp))[0];
+    if(t){ const before=(G.st[t]||{mp:0}).mp;
+      G.st[t]=G.st[t]||{hp:maxStats(t).maxhp, mp:0};
+      G.st[t].mp=Math.min(maxStats(t).maxmp, G.st[t].mp+it.tmp);
+      parts.push(CHARS[t].name+' +'+(G.st[t].mp-before)+' MP'); }
+  }
+  if(it.cort){ G.cort=Math.max(0,Math.min(9,G.cort+it.cort));
+    parts.push((it.cort>0?'+':'')+it.cort+' 🔥'); }
+  if(it.tintel && G.cort>=CORT.shaken){ G.intel+=it.tintel; parts.push('+'+it.tintel+' 🛈 (the lawyer smelled cortisol)'); }
+  const em=(it.emoji||'')+' USED '+it.name;
+  if(parts.length) toast(em+' — '+parts.join(', '),'intel'); else toast(em+' — felt nice anyway','intel');
+  beep('coin');
+}
+/* ============================================================
+   [6.5] VERDICT — endings scored per plan §4
+   1 The Second Accord 2 The Uneasy Truce 3 The Iron Ledger
+   4 Helicopter Money (+ MADE sticker)
+   ============================================================ */
+function computeVerdict(){
+  const both=G.mandates.fiscal&&G.mandates.money;
+  if(hasF('summit_heli')) return 'heli';
+  if(both && hasF('summit_offer')) return 'second';
+  if(both && hasF('summit_crush')) return 'iron';
+  return 'truce';
+}
+function showEnding(key){
+  const fam=ENDINGS[key]||ENDINGS.truce;
+  const made=F('made_secret');
+  /* score per plan: mandates, cortisol, cash, intel, roster, choices, MADE */
+  const both=G.mandates.fiscal&&G.mandates.money;
+  const pts=(G.mandates.fiscal?20:0)+(G.mandates.money?20:0)+
+    (9-G.cort)*4+
+    Math.min(30, Math.floor(Math.max(0,G.cash)/50))+
+    Math.min(20, Math.max(0,G.intel)*2)+
+    G.party.length*3+
+    (hasF('accord_unlocked')?5:0)+
+    (made?10:0);
+  $('endName').textContent=fam.name+(key==='heli'&&made? ' · ✦MADE':'');
+  $('endLine').textContent=fam.d;
+  $('endScore').innerHTML=
+    '· MANDATES '+(G.mandates.fiscal?'FISCAL ✓':'FISCAL ✗')+' / '+(G.mandates.money?'MONETARY ✓':'MONETARY ✗')+
+    ' · CASH $'+Math.max(0,G.cash)+' · INTEL '+Math.max(0,G.intel)+' · CORT 🔥'+G.cort+'/9'+
+    '<br>· ROSTER '+G.party.length+(G.bench.length? ' (+'+G.bench.length+' bench)':'')+
+    ' · PURPLE-DOOR VISITS '+(G.flags.madeVisits||0)+'/3'+
+    (made? ' · ✦ THE MADE STICKER IS SOMEWHERE ON YOU. NO ELABORATION.':
+      ' · (the purple door never explained itself; 3 visits were available)')+
+    '<br><br>· PLAN SCORE: <b>'+pts+'/123</b>'+
+    (pts>=90? ' — the historians will need two footnotes and a warning label.':
+      pts>=60? ' — a workable inquiry with quotable uglier parts.':
+      ' — the inquiry will call it “a learning experience” and bill you.');
+  log('VERDICT: '+fam.name+' ('+pts+'/123)');
+  beep('stamp'); stinger('verdict'); save(true);
+  if(NET.role==='host'&&NET.started) NET.bcast({t:'ending', key});
+  openOv('endov');
+}
+function openStub(key){
+  const t=$('stTitle'), sub=$('stSub'), bd=$('stBody');
+  if(key==='shop'){
+    t.textContent='QUIKSTOP'; sub.textContent='The servo. Cash only; crises exempt.'+
+      (ECON.shopMult()!==1? ' (crisis pricing ×'+ECON.shopMult().toFixed(2)+')':'');
+    bd.innerHTML='';
+    Object.entries(ITEMS).forEach(([id,item])=>{
+      const price=Math.round(item.cost*ECON.shopMult());
+      const row=document.createElement('div');
+      row.className='shoprow';
+      row.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
+        'padding:6px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
+      row.innerHTML='<span>'+(item.emoji||'')+' '+item.name+
+        (G.items&&G.items[id]? ' <span style="color:var(--intel)">×'+G.items[id]+'</span>':'')+
+        '</span><span style="color:var(--gold)">$'+price+'</span>';
+      const buy=document.createElement('button');
+      buy.textContent='BUY';
+      buy.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
+      buy.onclick=()=>{
+        if(!NET.uiGate()) return;
+        if(G.cash<price){ toast('INSUFFICIENT CASH — rejected by the till','bad'); beep('bad'); return; }
+        G.cash-=price;
+        G.items=G.items||{};
+        G.items[id]=(G.items[id]||0)+1;
+        toast('💰 −$'+price+' · +1 '+(item.emoji||'')+' '+item.name,'');
+        beep('coin'); cueCrew('item'); renderHUD(); save(true); openStub('shop');
+      };
+      row.appendChild(buy);
+      bd.appendChild(row);
+      const tip=document.createElement('div');
+      tip.style.cssText='color:var(--dim);font-size:12px;padding-bottom:8px';
+      tip.textContent=item.d+' · held: $'+G.cash;
+      bd.appendChild(tip);
+    });
+  } else if(key==='swap'){
+    t.textContent='BENCH SWAP'; sub.textContent='Four on duty; the bench rests, rehearses, and renews referrals.';
+    bd.innerHTML='';
+    const mkline=(id,zone,swapTo)=>{
+      const r=document.createElement('div');
+      r.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:5px 0;'+
+        'border-bottom:1px dotted rgba(255,255,255,.1)';
+      const c=CHARS[id];
+      r.innerHTML='<span style="color:'+c.color+'">'+c.name+' <span style="color:var(--dim)">'+
+        '('+zone+') — '+c.style+'</span></span>';
+      const btn=document.createElement('button');
+      btn.textContent= swapTo==='bench'? '→ BENCH':'→ LINEUP';
+      btn.style.cssText='margin-left:10px;padding:2px 10px;font-size:12px';
+      btn.onclick=()=>{
+        if(!NET.uiGate()) return;
+        if(swapTo==='bench'){
+          if(G.mpSeats.includes(id)){ toast('A player character stays on duty in multiplayer','bad'); return; }
+          if(G.party.length<5) return;
+          const lastActive=G.party.pop();
+          G.bench.unshift(lastActive);
+          toast(lastActive+' → bench','intel');
+        } else {
+          if(G.party.length<4){
+            G.party.push(id);
+          } else {
+            /* multiplayer: rotating a fresh ally in must never displace a
+               player character — replace the last NPC slot instead */
+            let out=-1;
+            for(let i=G.party.length-1;i>=0;i--){
+              if(!(G.mpSeats||[]).includes(G.party[i])){ out=i; break; }
+            }
+            if(out<0){ toast('A player character stays on duty in multiplayer','bad'); return; }
+            const outId=G.party[out];
+            G.party[out]=id;
+            G.bench.push(outId);
+            toast(outId+' ⇄ '+id,'intel');
+          }
+          const i=G.bench.indexOf(id); if(i>=0) G.bench.splice(i,1);
+        }
+        beep('tick'); renderHUD(); save(true); openStub('swap');
+      };
+      r.appendChild(btn);
+      bd.appendChild(r);
+    };
+    G.party.forEach(id=>mkline(id,'active','bench'));
+    G.bench.forEach(id=>mkline(id,'bench','active'));
+    if(!G.bench.length){
+      const n=document.createElement('div'); n.className='sub'; n.style.marginTop='10px';
+      n.textContent='Bench empty — recruits arrive by story: two early in Act 1, two in late Act 1, two in Canberra. Two may instead become rival bosses. One is a secret.';
+      bd.appendChild(n);
+    }
+  } else if(key==='ops'){
+    t.textContent='INTEL OPS'; sub.textContent='Information is the second currency. The first is cash. The third is being believed.';
+    bd.innerHTML='';
+    const row=(label,btnlabel,cost,fn,note)=>{
+      const r=document.createElement('div');
+      r.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
+        'padding:6px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
+      r.innerHTML='<span>'+label+(note?' <span style="color:var(--dim)">'+note+'</span>':'')+'</span>';
+      const b=document.createElement('button'); b.textContent=btnlabel+' ('+cost+'🛈)';
+      b.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
+      b.onclick=()=>{
+        if(!NET.uiGate()) return;
+        if(G.intel<cost){ toast('NOT ENOUGH INTEL (need '+cost+')','bad'); beep('bad'); return; }
+        G.intel-=cost; fn(); beep('coin');
+        toast('🛈 −'+cost,''); renderHUD(); save(true); openStub('ops');
+      };
+      r.appendChild(b); bd.appendChild(r);
+    };
+    /* sell intel */
+    const srow=document.createElement('div');
+    srow.style.cssText='display:flex;justify-content:space-between;padding:6px 0;'+
+      'border-bottom:1px dotted rgba(255,255,255,.1)';
+    srow.innerHTML='<span>· SELL INTEL — flush intel to cash at mood rates</span>'+
+      '<span style="color:var(--gold)">$'+ECON.sellRate()+' now</span>';
+    bd.appendChild(srow);
+    const sb=document.createElement('button'); sb.textContent='SELL 1 🛈';
+    sb.style.cssText='margin:10px 0;padding:2px 10px;font-size:12px';
+    sb.onclick=()=>{
+      if(!NET.uiGate()) return;
+      if(G.intel<1){ toast('NO INTEL LEFT TO SELL','bad'); beep('bad'); return; }
+      const rate=ECON.sellRate()||2;
+      G.intel--; G.cash+=rate;
+      toast('🛈 −1 → 💰 +$'+rate,''); beep('coin');
+      renderHUD(); save(true); openStub('ops');
+    };
+    bd.appendChild(sb);
+    row('· PEEK NEXT EVENT','PEEK',2,()=>{
+      const ev=EVENTS[G.deckPos % EVENTS.length];
+      toast('UPCOMING: '+ev.name+' → '+ev.mood,'intel');
+      setF('peeked_'+ev.name, true);
+    },'the deck updates at milestones');
+    row('· PLANT A BUG','BUG',2,()=>{
+      setF('bugNext',true); setF('bugPlayed',0);
+      toast('BUG planted — foe ATK −25% next battle','intel');
+    },'one ambush\'s worth of bad wiring');
+    row('· THE DOSSIER','DOSSIER',3,()=>{
+      setF('dossierNext',true);
+      toast('Dossier locked — statlines revealed next battle','intel');
+    },'know thine enemy statline');
+    row('· BURN A FAVOR','FAVOR',1,()=>{
+      G.cash+=25;
+      toast('💰 +$25 — a favor, repaid in rand','intel');
+    },'no questions, just cash');
+    const later=document.createElement('div');
+    later.className='sub'; later.style.marginTop='14px';
+    later.textContent='· BLACK-MARKET GEAR — prices move with the mood; stock arrives later.';
+    bd.appendChild(later);
+    /* consumables can be used between scenes to manage cortisol/HP/MP */
+    const held=Object.entries(G.items||{}).filter(([id,c])=>c>0 && ITEMS[id] &&
+      (ITEMS[id].thp||ITEMS[id].tmp||ITEMS[id].cort||ITEMS[id].tintel));
+    if(held.length){
+      const h4=document.createElement('h3'); h4.textContent='POCKETS (USE)'; bd.appendChild(h4);
+      held.forEach(([id])=>{
+        const it=ITEMS[id];
+        const r=document.createElement('div');
+        r.style.cssText='display:flex;justify-content:space-between;align-items:center;'+
+          'padding:5px 0;border-bottom:1px dotted rgba(255,255,255,.1)';
+        r.innerHTML='<span>'+(it.emoji||'')+' '+it.name+' ×'+G.items[id]+'</span>';
+        const b=document.createElement('button');
+        b.textContent='USE';
+        b.style.cssText='margin-left:12px;padding:2px 10px;font-size:12px';
+        b.onclick=()=>{ if(!NET.uiGate()) return; useItem(id); renderHUD(); save(true); openStub('ops'); };
+        r.appendChild(b); bd.appendChild(r);
+      });
+    } else {
+      const none=document.createElement('div');
+      none.className='sub'; none.style.marginTop='14px';
+      none.textContent='· POCKETS — nothing consumable on you. The servo sells cope, at a price.';
+      bd.appendChild(none);
+    }
+  } else if(key==='backrooms'){
+    t.textContent='THE BACKROOMS'; sub.textContent='Travel to The Backrooms from the ZONES panel for the purple door. This panel hums in sympathy.';
+    bd.innerHTML='<div class="sub">The door remembers every visit across the whole game. Three visits across the run, and something will be acknowledged. No refunds.</div>';
+    bd.insertAdjacentHTML('beforeend',
+      '<div class="row" style="color:#b18cff">Purple door visits so far: '+(G.flags.madeVisits||0)+'/3</div>');
+  }
+  openOv('stov'); beep('intel');
+}
+
+/* ============================================================
+   [5.6] NET — CREW MULTIPLAYER (PeerJS / WebRTC)
+   Host-authoritative: the HOST instance runs the entire engine
+   (scenes, battles, state). Clients render broadcast beats and
+   send intents ("still skipping", "I pick 2", "my move: Attack").
+   Solo play never touches this code (NET.role==='solo').
+   ============================================================ */
+const NET={
+  role:'solo',                 /* 'solo' | 'host' | 'client' */
+  started:false,               /* campaign running while connected */
+  peer:null, conn:null, conns:[],
+  code:'', name:'', selfPc:null,
+  players:[],                  /* host: [{conn(null = HOST themself), name, pc}] */
+  replay:[],                   /* current-scene beats for late joiners */
+  boxEl:null, awaitWorld:false,
+  CHOICE:null, MENU:null, CONT:null,
+  _gTimer:null, _boxTimer:null, _pendingG:null, _pendingBox:null, _skipT:0,
+  bs:0, _skipProc:0, _await:[]
+};
+const MP_PREFIX='bcrpg-online-v1-';
+function mpCode(){
+  const c='ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s='';
+  for(let i=0;i<5;i++) s+=c[Math.floor(Math.random()*c.length)];
+  return s;
+}
+function mpStatus(x){ const el=$('mpStatus'); if(el) el.textContent=x; }
+NET.now=()=> Date.now();
+
+/* — gating helpers used by the whole UI — */
+NET.uiGate=function(){
+  if(NET.role==='client'){
+    toast('In crew play the HOST handles the ledgers (shop/ops/bench/zones)','intel');
+    return false;
+  }
+  return true;
+};
+NET.uiSkip=function(){          /* dialogue advance: solo/host clicks, clients ask */
+  if(NET.role==='client'){ NET.send({t:'skip'}); return; }
+  advance();
+};
+
+/* — transport — */
+NET.send=function(m){
+  if(!NET.conn) return;
+  if(NET.conn.open){ try{ NET.conn.send(m); }catch(e){} }
+  else NET._await.push(m);          /* socket not up yet: deliver on open */
+};
+NET.flushAwait=function(){
+  if(!NET.conn || !NET.conn.open) return;
+  const q=NET._await; NET._await=[];
+  q.forEach(m=>{ try{ NET.conn.send(m); }catch(e){} });
+};
+NET.sendTo=function(c,m){ try{ if(c&&c.open) c.send(m); }catch(e){} };
+NET.bcast=function(m){ NET.conns.forEach(c=>NET.sendTo(c,m)); };
+NET.json=o=> JSON.parse(JSON.stringify(o));
+
+/* debounced full-state sync (the host is the ledger) */
+NET.FAST=false;   /* dev harness: flush immediately instead of timer batches */
+NET.syncG=function(){
+  if(NET.role!=='host'||!NET.started) return;
+  NET._pendingG=NET.json(G);
+  clearTimeout(NET._gTimer);
+  if(NET.FAST){
+    if(NET._pendingG) NET.bcast({t:'g', G:NET._pendingG});
+    NET._pendingG=null; return;
+  }
+  NET._gTimer=setTimeout(()=>{
+    if(NET._pendingG) NET.bcast({t:'g', G:NET._pendingG});
+    NET._pendingG=null;
+  },120);
+};
+NET.execChoice=function(o){
+  if(o.set) setF(o.set,true);
+  if(o.goto){ log('CHOICE: '+o.x); gotoScene(o.goto); return; }
+  if(o.panel){ log('PANEL: '+o.panel); openStub(o.panel); advance(); return; }
+  if(o.toast) toast(o.toast,'intel');
+  log('CHOICE: '+o.x);
+  advance();
+};
+NET.syncBox=function(html){
+  if(NET.role!=='host'||!NET.started) return;
+  NET._pendingBox=html;
+  clearTimeout(NET._boxTimer);
+  if(NET.FAST){
+    if(NET._pendingBox!=null){
+      NET.bcast({t:'box', html:NET._pendingBox});
+      const msg={t:'box', html:NET._pendingBox};
+      const i=NET.replay.findIndex(p=>p.t==='box');
+      if(i>=0) NET.replay[i]=msg; else NET.replay.push(msg);
+    }
+    NET._pendingBox=null; return;
+  }
+  NET._boxTimer=setTimeout(()=>{
+    if(NET._pendingBox!=null){
+      NET.bcast({t:'box', html:NET._pendingBox});
+      /* keep the freshest fight panel in the replay buffer */
+      const i=NET.replay.findIndex(p=>p.t==='box');
+      const msg={t:'box', html:NET._pendingBox};
+      if(i>=0) NET.replay[i]=msg; else NET.replay.push(msg);
+    }
+    NET._pendingBox=null;
+  },40);
+};
+/* discrete beats: broadcast + record for late-join replay.
+   Every beat carries a monotonic serial (bs) so a laggy player's stale
+   "skip" request can never double-advance the host's story pointer. */
+NET.beat=function(p){
+  if(NET.role!=='host'||!NET.started) return;
+  p.bs=++NET.bs;
+  NET.replay.push(p);
+  NET.bcast(p);
+};
+
+NET.ownerOf=function(uid){ return NET.players.find(p=>p.pc===uid)||null; };
+
+/* — host: lobby — */
+NET.hostLobby=function(code){
+  NET.name=($('mpName').value||'HOST').trim().slice(0,12)||'HOST';
+  NET.role='host'; NET.started=false;
+  NET.players=[{conn:null, name:NET.name, pc:null}];
+  NET.code=(code||mpCode()).toUpperCase().replace(/[^A-Z0-9]/g,'')||mpCode();
+  NET.conns=[]; NET.replay=[];
+  showMPLobby(true);
+  NET.renderLobby();
+  if(typeof Peer==='undefined'){
+    mpStatus('PeerJS did not load (are we offline?). Multiplayer is unavailable — the solo campaign still works.');
+    NET.role='solo'; return;
+  }
+  openHostPeer(false);
+};
+function openHostPeer(retry){
+  try{
+    NET.peer=new Peer(MP_PREFIX+NET.code, {debug:0});
+  }catch(e){ mpStatus('Host failed: '+e.message); NET.role='solo'; return; }
+  NET.peer.on('open', ()=> mpStatus('LIVE. Hand out the code: '+NET.code));
+  NET.peer.on('connection', c=>{
+    NET.conns.push(c);
+    c.on('data', m=>{ try{ NET.hostRecv(c,m); }catch(e){ try{c.send({t:'trap', x:'Host hiccup: '+e.message});}catch(_){} } });
+    c.on('close', ()=> NET.hostDrop(c));
+    c.on('error', ()=> NET.hostDrop(c));
+  });
+  NET.peer.on('error', err=>{
+    if(err && err.type==='unavailable-id' && !retry){ NET.code=mpCode(); openHostPeer(true); return; }
+    mpStatus('HOST ERROR: '+((err&&err.type)||err)+' — try again');
+  });
+}
+NET.hostDrop=function(c){
+  NET.conns=NET.conns.filter(x=>x!==c);
+  const p=NET.players.find(p=>p.conn===c);
+  if(!p) return;
+  NET.players=NET.players.filter(x=>x!==p);
+  if(NET.started && G){
+    const i=G.mpSeats.indexOf(p.pc);
+    if(i>=0){
+      G.mpSeats.splice(i,1);
+      toast(p.name+' left — '+CHARS[p.pc].name+' is host-controlled now','bad');
+      /* if their battle menu is pending, hand the wheel back to the host */
+      if(NET.MENU && NET.MENU.uid===p.pc && BATTLE && !BATTLE.over){
+        const ctx=NET.MENU; NET.MENU=null;
+        if(ctx && ctx.u) partyTurn(ctx.u);
+      }
+    }
+  } else if(p.pc){ toast(p.name+' left the lobby','bad'); }
+  NET.bcast({t:'toast', x:p.name+' disconnected — their character is now host-controlled', cls:'bad'});
+  NET.bcastLobby();
+};
+NET.hostRecv=function(c,m){
+  if(!m||typeof m!=='object') return;
+  if(m.t==='hello'){
+    let p=NET.players.find(p=>p.conn===c);
+    if(!p){ p={conn:c, name:String(m.name||'DELEGATE').slice(0,12), pc:null}; NET.players.push(p); }
+    else p.name=String(m.name||p.name).slice(0,12);
+    beep('coin');
+    NET.sendTo(c,{t:'lobby', players:NET.lobbyState(), started:NET.started, code:NET.code});
+    NET.bcastLobby();
+    return;
+  }
+  if(m.t==='pcpick'){
+    const p=NET.players.find(p=>p.conn===c); if(!p) return;
+    if(NET.started){
+      /* late join / reconnect: claim an unseated roster face, else spectate */
+      const claim=G.party.find(id=> !G.mpSeats.includes(id) && id===m.id);
+      if(claim){
+        p.pc=claim; G.mpSeats.push(claim); G.mpNames[claim]=p.name;
+        ensurePartyStats();
+        NET.sendTo(c,{t:'start', pc:claim});
+        NET.sendTo(c,{t:'g', G:NET.json(G)});
+        NET.sendTo(c,{t:'resume', beats:NET.replay.slice()});
+        NET.bcast({t:'toast', x:p.name+' took the wheel of '+CHARS[claim].name, cls:'intel'});
+        renderHUD(); save(true);
+      } else {
+        NET.sendTo(c,{t:'trap', x:'No unclaimed character right now — you are watching this inquiry as a spectator.'});
+      }
+      return;
+    }
+    if(m.id && CANDIDATES.includes(m.id) && !NET.players.some(p2=>p2.pc===m.id)){
+      p.pc=m.id; beep('coin');
+    }
+    NET.bcastLobby();
+    return;
+  }
+  if(!NET.started) return;
+  if(m.t==='pick')   { NET.remoteChoice(c, m.idx); return; }
+  if(m.t==='skip')   {
+    if(BATTLE||NET.CHOICE||NET.CONT) return;
+    /* stale-skip guard: a client lagging a beat behind their screen must not
+       advance the story twice for one click */
+    if(NET.bs && m.bs && !(m.bs>NET._skipProc)) return;
+    const now=NET.now();
+    if(!NET.FAST && now-NET._skipT<90) return;   /* debounce real humans */
+    NET._skipT=now;
+    NET._skipProc=Math.max(NET._skipProc, m.bs||0);
+    advance(); return;
+  }
+  if(m.t==='menuPick'){ NET.remoteMenu(c, m.seq, m.idx); return; }
+  if(m.t==='cont')   { NET.remoteCont(c); return; }
+};
+
+/* remote intent executors (host side) */
+NET.remoteChoice=function(c, idx){
+  const ctx=NET.CHOICE; if(!ctx) return;
+  NET.CHOICE=null;
+  const list=(ctx.kind==='ally')? ctx.pool: ctx.b.options;
+  const p=NET.players.find(p=>p.conn===c);
+  const i=Math.max(0, Math.min(list.length-1, idx|0));
+  if(ctx.kind==='ally'){
+    if(!ctx.pool.length){ advance(); return; }
+    const id=ctx.pool[i];
+    log('SIGNEE: '+(p? p.name:'?')+' → '+(CHARS[id]||{}).name);
+    joinChar(id);
+    if(ctx.b.say) addDialogue({who:CHARS[id].name, pid:id, text:ctx.b.say});
+    return;
+  }
+  const o=list[i]; if(!o) return;
+  log('CHOICE by '+(p? p.name:'?')+': '+o.x);
+  if(o.set) setF(o.set,true);
+  if(o.goto){ gotoScene(o.goto); return; }
+  if(o.panel){ openStub(o.panel); advance(); return; }
+  if(o.toast) toast(o.toast,'intel');
+  advance();
+};
+NET.remoteMenu=function(c, seq, idx){
+  const ctx=NET.MENU;
+  if(!ctx || ctx.seq!==seq) return;
+  const p=NET.players.find(p=>p.conn===c);
+  if(!p || p.pc!==ctx.uid) return;      /* only that unit's player may act */
+  NET.MENU=null;
+  const fn=ctx.fns[idx];
+  if(fn) fn();
+};
+NET.remoteCont=function(c){
+  if(!NET.CONT) return;
+  const f=NET.CONT; NET.CONT=null; f();
+};
+
+/* — lobby UI (shared) — */
+function showMPLobby(host){
+  closeOv('selov');
+  openOv('mpov');
+  $('mpJoinRow').style.display= host? 'none':'flex';
+  $('mpNameRow').style.display= host? 'flex':'flex';
+  $('mpCodeLine').style.display= host? 'block':'none';
+  $('mpStart').style.display= host? 'inline-block':'none';
+  mpStatus(host? 'Creating the table…':'Enter the host’s 5-letter code.');
+  $('mpGrid').innerHTML='';
+  $('mpList').innerHTML='';
+  $('mpCodeLine').textContent= host? NET.code: '';
+}
+NET.lobbyState=function(){
+  return NET.players.map(p=>({ id:(p.conn? p.conn.peer:'HOST'), name:p.name, pc:p.pc }));
+};
+NET.renderLobby=function(){
+  const list=$('mpList'); if(!list) return;
+  list.innerHTML='';
+  NET.players.forEach(p=>{
+    const r=document.createElement('div'); r.className='mprow';
+    const taken=p.pc? ' — playing <b style="color:'+(CHARS[p.pc]||{}).color+'">'+((CHARS[p.pc]||{}).name||'?')+'</b>':' — no candidate yet';
+    r.innerHTML='<span>'+(p.conn? '':'⭐ ')+'<b>'+p.name+'</b>'+taken+'</span>'+
+      (p.conn? '':'<span class="mpbadge">HOST</span>');
+    list.appendChild(r);
+  });
+  const g=$('mpGrid'); g.innerHTML='';
+  CANDIDATES.forEach(id=>{
+    const c=CHARS[id];
+    const d=document.createElement('div'); d.className='selcard';
+    if(NET.players.some(p=>p.pc===id)) d.classList.add('taken');
+    const selfPc= NET.role==='host'? NET.players[0].pc : NET.selfPc;
+    if(selfPc===id) d.classList.add('picked');
+    d.innerHTML='<div class="nm" style="color:'+c.color+'">'+c.name+'</div>'+
+      '<div class="cl">'+c.cls+'</div><div class="bl" style="font-size:11px">'+c.blurb+'</div>';
+    d.onclick=()=>{ beep('tick'); NET.localPick(id); };
+    g.appendChild(d);
+  });
+  if(NET.role==='host') $('mpStart').disabled=!(NET.players.length>=1 && NET.players.every(p=>p.pc));
+};
+NET.bcastLobby=function(){
+  const msg={t:'lobby', players:NET.lobbyState(), started:NET.started, code:NET.code};
+  NET.bcast(msg);
+  NET.renderLobby();
+};
+NET.localPick=function(id){
+  if(NET.role==='host'){
+    if(NET.started) return;
+    if(NET.players.some(p=>p.pc===id)){ toast('Already claimed','bad'); return; }
+    NET.players[0].pc=id; beep('coin'); NET.bcastLobby(); return;
+  }
+  if(CANDIDATES.includes(id)) NET.send({t:'pcpick', id});
+};
+NET.beginCrew=function(){
+  if(NET.role!=='host'||NET.started) return;
+  if(!NET.players.every(p=>p.pc)){
+    mpStatus('Every seat needs a candidate before the clock starts.');
+    return;
+  }
+  const picks=NET.players.map(p=>p.pc).slice(0,4);
+  NET.players.forEach(p=>{ if(p.pc && picks.indexOf(p.pc)<0){ p.pc=null; } });
+  NET.started=true;
+  NET.replay=[];
+  /* tell each player their candidate BEFORE the first beat lands */
+  NET.players.forEach(p=>{ if(p.conn) NET.sendTo(p.conn,{t:'start', pc:p.pc}); });
+  startGame(picks[0]);
+  G.party=picks.slice(0,4);
+  G.mpSeats=picks.slice(0,4);
+  G.mpNames={};
+  NET.players.forEach(p=>{ if(p.pc) G.mpNames[p.pc]=p.name; });
+  ensurePartyStats(); renderHUD();
+  save(true);
+  NET.bcast({t:'g', G:NET.json(G)});
+  renderHUD();
+};
+
+/* — client side — */
+NET.joinLobby=function(code){
+  NET.name=($('mpName').value||'DELEGATE').trim().slice(0,12)||'DELEGATE';
+  code=(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length<4){ mpStatus('That code looks improvised. Five characters.'); return; }
+  NET.role='client'; NET.started=false; NET.selfPc=null;
+  showMPLobby(false);
+  if(typeof Peer==='undefined'){
+    mpStatus('PeerJS did not load (are we offline?). Multiplayer is unavailable — the solo campaign still works.');
+    NET.role='solo'; return;
+  }
+  mpStatus('Dialing '+code+'…');
+  try{ NET.peer=new Peer({debug:0}); }catch(e){ mpStatus('Join failed: '+e.message); NET.role='solo'; return; }
+  NET.peer.on('open', ()=>{
+    NET.conn=NET.peer.connect(MP_PREFIX+code, {reliable:true});
+    NET.conn.on('open', ()=>{ mpStatus('Connected — the committee convenes.'); NET.send({t:'hello', name:NET.name}); NET.flushAwait(); });
+    NET.conn.on('data', m=>{ try{ NET.recv(m); }catch(e){ mpStatus('Data hiccup: '+e.message); } });
+    NET.conn.on('close', ()=>{ mpStatus('Host hung up. The inquiry adjourns.'); NET.cleanup(true); });
+  });
+  NET.peer.on('error', err=>{
+    if(err && err.type==='peer-unavailable') mpStatus('Nobody hosting code '+code+'. Check it and retry.');
+    else mpStatus('JOIN ERROR: '+((err&&err.type)||err));
+  });
+};
+
+NET.recv=function(m){
+  if(!m||typeof m!=='object') return;
+  switch(m.t){
+    case 'lobby': {
+      NET.playersInfo=m.players||[];
+      NET.renderLobbyFrom(m.players);
+      mpStatus('In the lobby. Pick a candidate.');
+      break;
+    }
+    case 'trap': mpStatus(m.x); toast(m.x,'bad'); break;
+    case 'start': {
+      NET.selfPc=m.pc; NET.awaitWorld=true;
+      closeOv('mpov');
+      toast('You are '+CHARS[m.pc].name+'. The committee convenes…','intel');
+      break;
+    }
+    case 'g': {
+      G=m.G;
+      if(NET.awaitWorld){
+        NET.awaitWorld=false;
+        show('world'); renderHUD(); NET.beatsLocal=[];
+      }
+      renderHUD();
+      break;
+    }
+    case 'scene': {
+      NET.beatsLocal=[];
+      const st=$('stage'); if(st) st.innerHTML='';
+      const kick=document.createElement('div'); kick.className='beat kicker';
+      kick.textContent=m.zone; st.appendChild(kick);
+      break;
+    }
+    case 'k': { const st=$('stage'); const d=document.createElement('div');
+      d.className='beat kicker'; d.textContent=m.x; st.appendChild(d); break; }
+    case 'say': { NET.rSay(m); break; }
+    case 'choice': NET.rChoice(m); break;
+    case 'menu': NET.rMenu(m); break;
+    case 'newbox': {
+      const st=$('stage');
+      const box=document.createElement('div'); box.className='beat';
+      box.style.border='1px solid'+(m.red? ' var(--red)':' rgba(255,255,255,.15)');
+      box.style.padding='10px'; box.style.margin='8px 0';
+      st.appendChild(box); NET.boxEl=box;
+      break;
+    }
+    case 'box': if(NET.boxEl) NET.boxEl.innerHTML=m.html; break;
+    case 'rbeat': {
+      const st=$('stage');
+      const w=document.createElement('div'); w.className='beat';
+      w.innerHTML=m.html;
+      if(G) stinger(m.win? 'win':'lose');   /* P6: crew hears the result too */
+      const ok=document.createElement('button'); ok.textContent='CONTINUE';
+      ok.onclick=()=>{ beep('tick'); NET.send({t:'cont'}); ok.remove(); };
+      w.appendChild(ok); st.appendChild(w); st.scrollTop=st.scrollHeight;
+      break;
+    }
+    case 'made': {
+      const st=$('stage');
+      const w=document.createElement('div'); w.className='beat';
+      const lines=[
+        'The purple door has no signage and perfectly smooth hinges. You open it. Behind it: a short hallway.',
+        'The hallway ends at a second purple door. It is warmer, and you do not remember walking.',
+        'The third door opens onto the first hallway. Somewhere a sticker quietly acknowledges you.'
+      ];
+      w.innerHTML='<div style="color:#b18cff;max-width:560px;margin:0 auto;padding:10px 0">'+
+        lines[Math.min((m.n||1)-1,2)]+(m.recruit? '<br><b style="color:#b18cff">'+m.recruit+' emerges.</b>':'')+'</div>';
+      if(m.n<3){
+        const ok=document.createElement('button'); ok.textContent='CLOSE THE DOOR';
+        ok.onclick=()=>{ beep('intel'); NET.send({t:'skip', bs:m.bs}); ok.remove(); };
+        w.appendChild(ok);
+      }
+      st.appendChild(w); st.scrollTop=st.scrollHeight;
+      break;
+    }
+    case 'ms': {
+      $('mstoneBig').textContent=m.m+' — CRISIS ADVANCES';
+      $('mstoneSub').textContent=
+        'PHASE '+m.phase+': '+m.phaseName+' — encounters ratchet, shop prices swell, intel gets dearer.'+
+        (m.sub? '\n'+m.sub : '');
+      openOv('mstone'); stinger('mile');
+      break;
+    }
+    case 'ev': {
+      $('evName').textContent='📈 '+m.name+' — '+m.mood;
+      $('evLine').textContent=m.d;
+      $('evFx').innerHTML=m.fx||'';
+      openOv('evov'); beep('intel');
+      break;
+    }
+    case 'ending': showEnding(m.key); break;
+    case 'cue': stinger(m.name); break;
+    case 'toast': toast(m.x, m.cls); break;
+    case 'resume': {
+      (m.beats||[]).forEach(function(b){ try{ NET.recv(b); }catch(e){} });
+      mpStatus('Caught up with the committee.');
+      break;
+    }
+    case 'bye': NET.cleanup(true); break;
+  }
+};
+
+/* client beat renderers (mirror the host's DOM builders) */
+NET.rSay=function(m){
+  const st=$('stage');
+  retireBeats();
+  const d=document.createElement('div'); d.className='dline';
+  d.appendChild(sayPortrait(m.pid, m.pid===NET.selfPc));
+  const body=document.createElement('div'); body.className='dbody';
+  const who=document.createElement('div'); who.className='dwho';
+  who.textContent=(m.silh?'📢 ':'')+m.who;
+  body.appendChild(who);
+  const txt=document.createElement('div'); txt.className='dtext'; txt.innerHTML=m.text;
+  body.appendChild(txt); d.appendChild(body);
+  d.onclick=()=>{ beep('tick'); NET.send({t:'skip', bs:m.bs}); };
+  st.appendChild(d);
+  const a=document.createElement('div'); a.className='adv'; a.textContent='─ CLICK / SPACE ─';
+  st.appendChild(a); st.scrollTop=st.scrollHeight;
+};
+NET.rChoice=function(m){
+  const st=$('stage');
+  retireBeats();
+  document.querySelectorAll('#stage .adv').forEach(e=>e.remove());
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt'; pr.textContent='▸ '+m.prompt;
+  w.appendChild(pr);
+  (m.options||[]).forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    btn.innerHTML='<span class="k">'+(i+1)+'.</span> '+o.x+(o.note?'<small>'+o.note+'</small>':'');
+    btn.onclick=()=>{ beep('tick'); NET.send({t:'pick', idx:i}); };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+};
+NET.rMenu=function(m){
+  const st=$('stage');
+  retireBeats();
+  NET.MENUSEQ=m.seq;
+  const w=document.createElement('div'); w.className='chwrap';
+  const pr=document.createElement('div'); pr.className='chprompt';
+  const mine=(m.uid===NET.selfPc);
+  if(!mine){
+    pr.textContent='⏳ '+((CHARS[m.uid]||{}).name||'A colleague')+' is deciding their move…';
+    w.appendChild(pr); st.appendChild(w); st.scrollTop=st.scrollHeight; return;
+  }
+  pr.textContent=m.prompt; w.appendChild(pr);
+  (m.opts||[]).forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='chbtn';
+    if(o.dis) btn.disabled=true;
+    btn.innerHTML='<span class="k">'+o.k0+'</span> '+o.x+
+      (o.mpc!=null? ' <span class="hp">MP '+o.mpc+'</span>':'')+
+      (o.rhp? ' <span class="hp">HP '+o.rhp+'</span>':'')+
+      (o.sub? '<small>'+o.sub+'</small>':'');
+    btn.onclick=()=>{
+      if(o.dis){ toast('NOT ENOUGH MP','bad'); return; }
+      beep('tick'); NET.send({t:'menuPick', seq:m.seq, idx:i});
+    };
+    w.appendChild(btn);
+  });
+  st.appendChild(w); st.scrollTop=st.scrollHeight;
+};
+NET.playersInfo=[];
+NET.renderLobbyFrom=function(players){
+  const list=$('mpList'); if(!list) return;
+  list.innerHTML='';
+  (players||[]).forEach(p=>{
+    const r=document.createElement('div'); r.className='mprow';
+    const mine=(NET.conn && p.id===NET.conn.peer);
+    const c=p.pc? CHARS[p.pc]: null;
+    r.innerHTML='<span>'+(mine?'▶ ':'')+p.name+(c? ' — playing <b style="color:'+c.color+'">'+c.name+'</b>':' — no candidate yet')+'</span>'+
+      (p.id==='HOST'? '<span class="mpbadge">HOST</span>':'');
+    list.appendChild(r);
+  });
+  const g=$('mpGrid'); g.innerHTML='';
+  CANDIDATES.forEach(id=>{
+    const c=CHARS[id];
+    const d=document.createElement('div'); d.className='selcard';
+    if((players||[]).some(p=>p.pc===id)) d.classList.add('taken');
+    d.innerHTML='<div class="nm" style="color:'+c.color+'">'+c.name+'</div>'+
+      '<div class="cl">'+c.cls+'</div><div class="bl" style="font-size:11px">'+c.blurb+'</div>';
+    d.onclick=()=>{ beep('tick'); NET.send({t:'pcpick', id});
+      toast('Nominated '+c.name+' — waiting on the host','intel'); };
+    g.appendChild(d);
+  });
+};
+NET.cleanup=function(silent){
+  try{ if(NET.conn&&NET.conn.close) NET.conn.close(); }catch(e){}
+  try{ if(NET.peer&&NET.peer.destroy) NET.peer.destroy(); }catch(e){}
+  NET.conn=null; NET.peer=null; NET.conns=[];
+  NET.role='solo'; NET.started=false; NET.selfPc=null; NET.awaitWorld=false;
+  NET.CHOICE=null; NET.CONT=null;
+  if(!silent){ closeOv('mpov'); show('title'); }
+};
+
+/* — lobby buttons — */
+$('btnHost').onclick=()=>{ beep('tick'); NET.hostLobby(); };
+$('btnJoin').onclick=()=>{ beep('tick'); showMPLobby(false); };
+$('mpGo').onclick=()=>{ beep('tick'); NET.joinLobby($('mpCode').value); };
+$('mpStart').onclick=()=>{ beep('coin'); NET.beginCrew(); };
+$('mpLeave').onclick=()=>{
+  beep('tick');
+  if(NET.role==='host'||NET.role==='client'){
+    if(NET.role==='host'&&NET.started) NET.bcast({t:'bye'});
+    NET.cleanup();
+  }
+  closeOv('mpov'); show('title');
+};
+
+/* — ESC + keyboard — */
+$('stClose').onclick=()=>{ closeOv('stov'); renderHUD(); save(true); };$('evOk').onclick=()=>{ closeOv('evov'); save(true); };
+$('endOk').onclick=()=>{
+  closeOv('endov'); save(true);
+  $('stage').innerHTML='';
+  show('title');
+  /* crew campaign over: adjourn the room */
+  if(NET.role==='host'){ NET.bcast({t:'bye'}); NET.cleanup(true); }
+  else if(NET.role==='client'){ NET.cleanup(true); }
+};
+$('mstoneOk').onclick=()=>{
+  closeOv('mstone'); save(true);
+  if(R.scene==='m0_exit') gotoScene('hub');
+};
+
+document.addEventListener('keydown',ev=>{
+  if($('mpov').classList.contains('on')){ if(ev.key==='Escape'){ $('mpLeave').click(); } return; }
+  if($('stov').classList.contains('on')){ if(ev.key==='Escape'){ $('stClose').click(); } return; }
+  if($('evov').classList.contains('on')){ if(ev.key==='Escape'){ $('evOk').click(); } return; }
+  if($('endov').classList.contains('on')){ if(ev.key==='Escape'||ev.key==='Enter'){ $('endOk').click(); } return; }
+  if($('mstone').classList.contains('on')||$('selov').classList.contains('on')){
+    if(ev.key==='Escape'){ $('selCancel').click(); }
+    return;
+  }
+  if($('world').classList.contains('on')){
+    if(ev.code==='Space'||ev.code==='Enter'){
+      let last=$('stage').lastElementChild;
+      if(last && last.classList && last.classList.contains('adv'))
+        last=last.previousElementSibling;
+      if(last && last.classList && last.classList.contains('dline')){
+        last.click(); ev.preventDefault();
+      }
+    }
+    const n=parseInt(ev.key,10);
+    if(n>=1&&n<=9){
+      const btns=$('stage').querySelectorAll('.chbtn');
+      if(btns[n-1]) btns[n-1].click();
+    }
+  }
+});
+
+/* ============================================================
+   UI — PC select
+   ============================================================ */
+let selPick=null;
+function openSelect(){
+  const g=$('selgrid'); g.innerHTML='';
+  CANDIDATES.forEach(id=>{
+    const c=CHARS[id];
+    const d=document.createElement('div'); d.className='selcard';
+    /* portrait (auto-silhouette on missing file) */
+    const pf=document.createElement('div');
+    pf.style.cssText='position:relative;min-height:112px;';
+    const im=imgTag(encodeURI(PORTRAITS[id]));
+    im.style.cssText='width:100%;height:110px;object-fit:cover;border:1px solid var(--line);background:#000';
+    im.onerror=()=>{ pf.innerHTML='<div style="height:110px;background:#171420;border:1px solid #2a2535;'+
+      'border-radius:0 0 0 0;position:relative"><span style="position:absolute;inset:34px 0;text-align:center;'+
+      'color:var(--dim);font-size:26px;font-weight:bold">?</span></div>'; im.remove(); };
+    pf.appendChild(im);
+    d.appendChild(pf);
+    d.insertAdjacentHTML('beforeend',
+      '<div class="nm" style="color:'+c.color+'">'+c.name+'</div>'+
+      '<div class="cl">'+c.cls+'</div>'+
+      '<div class="bl">'+c.blurb+'</div>'+
+      '<div class="sig">'+(c.sig||[]).map(s=>'◆ '+s).join('<br>')+'</div>');
+    d.onclick=()=>{
+      beep('tick'); selPick=id;
+      document.querySelectorAll('.selcard').forEach(e=>e.classList.remove('picked'));
+      d.classList.add('picked');
+      $('selBtn').disabled=false;
+    };
+    g.appendChild(d);
+  });
+  openOv('selov');
+}
+
+/* ============================================================
+   [6] BOOT + DEV API
+   ============================================================ */
+function startGame(pcid){
+  G=freshState(pcid);
+  renderHUD(); show('world'); gotoScene('m0_tv');
+}
+function continueGame(){
+  const s=loadSave(); if(!s) return;
+  G=s;
+  if(!G.diff) G.diff='st';   /* P6: backfill saves from before difficulty existed */
+  renderHUD(); show('world');
+  gotoScene(G.scene||'hub', true);
+}
+
+$('btnNew').onclick=()=>{ beep('tick'); selPick=null; openSelect(); };
+$('btnCont').onclick=()=>{ beep('tick'); continueGame(); };
+$('btnMute').onclick=()=>{
+  beep('tick');
+  if(!G) { /* pre-game toggle stored for the next game */
+    const s=loadSave(); if(s){ s.muted=!s.muted; localStorage.setItem(SAVE_KEY, JSON.stringify(s)); }
+  }
+  G.muted=!G.muted;
+  $('btnMute').textContent='♪ SOUND: '+(G.muted? 'OFF':'ON');
+};
+$('selBtn').onclick=()=>{ if(!selPick) return; beep('coin'); closeOv('selov'); startGame(selPick); };
+$('selCancel').onclick=()=>{ beep('tick'); closeOv('selov'); };
+
+/* — P6: difficulty chips. The pick is stored pre-game (survives reloads) and
+   lands in G.diff at startGame; MP crews inherit the host's pick via sync. — */
+function setDiffUI(k){
+  ['dEA','dST','dHA'].forEach(id=>$(id).classList.remove('on'));
+  $(k==='ea'? 'dEA': k==='ha'? 'dHA':'dST').classList.add('on');
+  $('dNote').textContent=DIFF_NOTE[k]||DIFF_NOTE.st;
+}
+[['dEA','ea'],['dST','st'],['dHA','ha']].forEach(([id,k])=>{
+  $(id).onclick=()=>{
+    beep('tick');
+    try{ localStorage.setItem('bcrpg_diff',k); }catch(e){}
+    setDiffUI(k);
+  };
+});
+setDiffUI(selDiff());
+
+(function boot(){
+  const s=loadSave();
+  if(s){
+    $('btnCont').disabled=false;
+    $('btnMute').textContent='♪ SOUND: '+(s.muted? 'OFF':'ON');
+    G={muted: !!s.muted};
+  }
+})();
+
+/* dev console helpers — P1+ will lean on these */
+window.BCRPG={
+  G:()=>G, save, load:continueGame,
+  reset:()=>{ deleteSave(); location.reload(); },
+  go:id=> gotoScene(id),
+  scenes:()=> Object.keys(SCENES),
+  give:(cash,intel,cort)=>{ G.cash+=cash||0; G.intel+=intel||0;
+    G.cort=Math.max(0,Math.min(9,(G.cort||0)+(cort||0))); renderHUD(); save(true); },
+  flag:(k,v)=>{ setF(k,v); renderHUD(); save(true); },
+  mute:()=>{ $('btnMute').click(); },
+  /* P2 battle API: ids, 'enemyId', script — attacks/skills/defend */
+  testBattle,
+  TUNING, SKILL_FX, STATBASE, ENEMY_STATS, ENEMY_AI,
+  /* P3 market APIs */
+  EVENTS, MOOD_MODS, ECON, drawEventCard,
+  setMood:m=>{ G.mood=m; renderHUD(); save(true); },
+  /* P6 difficulty API (dev/tests) */
+  DIFFS, setDiff:k=>{ G.diff=k; },
+  /* P5 verdict APIs (dev/tests) */
+  verdict:computeVerdict, ending:showEnding,
+  mile:(id)=>{ advanceMilestone(id, G.phase, G.phaseName, 'DEV milestone'); save(true); },
+  /* playtest hooks */
+  ENEMIES,
+  /* live battle introspection (tests) */
+  battle:()=>BATTLE,
+  /* P6: foe factory (tests) — see difficulty scaling directly */
+  mkFoe:(eid,i,n)=>{ ensurePartyStats(); return mkFoeUnit(eid,i||0,n||1); },
+  /* crew multiplayer (dev/tests): host/join with a FakePeer in harnesses */
+  net:{
+    host:code=>NET.hostLobby(code),
+    join:(code,name)=>{ if(name) $('mpName').value=name; NET.joinLobby(code); },
+    pick:id=>NET.localPick(id),
+    begin:()=>NET.beginCrew(),
+    leave:()=>NET.cleanup(),
+    fast:v=>{ NET.FAST=!!v; },   /* harness: no debounce, sync everything */
+    drop:()=>{ const c=NET.conns[0]; if(c&&c.close) c.close(); },   /* harness: simulate a client quitting */
+    code:()=>NET.code,
+    players:()=>NET.players,
+    state:()=>({role:NET.role, started:NET.started, selfPc:NET.selfPc, code:NET.code})
+  }
+};
+/* old-save migration: seed missing P2 fields without touching v:1 shape */
+const _origContinue=continueGame;
+continueGame=function(){
+  _origContinue();
+  if(G){
+    ensurePartyStats();
+    if(!G.mpSeats) G.mpSeats=[];
+    if(!G.mpNames) G.mpNames={};
+  }
+};
+</script>
+</body>
+</html>
